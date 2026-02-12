@@ -89,6 +89,7 @@ The server will start at `http://localhost:8080`.
 
 -   `POST /generate-activities`: Directly triggers activity generation for a story.
 -   `POST /pubsub-handler`: Listens for messages from Google Cloud Pub/Sub.
+-   `GET /task-status/{story_id}`: Check the status of activity generation for a specific story.
 -   `GET /health`: Simple health check.
 
 ---
