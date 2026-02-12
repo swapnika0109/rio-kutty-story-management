@@ -126,15 +126,15 @@ async def get_task_status(story_id: str):
     """
     logger.info(f"Checking task status for story {story_id}")
     
-    status = await FirestoreService().get_task_status(story_id)
+    task_status = await FirestoreService().get_task_status(story_id)
     
-    if not status:
+    if not task_status:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Story {story_id} not found"
         )
     
-    return status
+    return task_status
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 8080))
