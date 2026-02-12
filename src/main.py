@@ -118,6 +118,24 @@ async def pubsub_handler(pubsub_msg: PubSubMessage, background_tasks: Background
 async def health_check():
     return {"status": "healthy"}
 
+@app.get("/task-status/{story_id}")
+async def get_task_status(story_id: str):
+    """
+    Get the status of activity generation tasks for a story.
+    Returns information about which activities are completed, pending, or failed.
+    """
+    logger.info(f"Checking task status for story {story_id}")
+    
+    status = await FirestoreService().get_task_status(story_id)
+    
+    if not status:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Story {story_id} not found"
+        )
+    
+    return status
+
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 8080))
     uvicorn.run(app, host="0.0.0.0", port=port)

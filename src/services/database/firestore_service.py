@@ -126,3 +126,36 @@ class FirestoreService:
         except Exception as e:
             logger.error(f"Firestore get failed: {str(e)}")
             return None
+
+    async def get_task_status(self, story_id: str):
+        """
+        Gets the status of activity generation tasks for a story.
+        Returns information about which activities are completed, pending, or failed.
+        """
+        try:
+            # Get the story document
+            story = await self.get_story(story_id)
+            if not story:
+                return None
+            
+            # Get all activity types that should be generated
+            activity_types = ["mcq", "art", "moral", "science"]
+            
+            # Check activities field from story
+            story_activities = story.get("activities", {})
+            
+            # Build status response
+            status = {
+                "story_id": story_id,
+                "activities": {}
+            }
+            
+            for activity_type in activity_types:
+                activity_status = story_activities.get(activity_type, "pending")
+                status["activities"][activity_type] = activity_status
+            
+            return status
+            
+        except Exception as e:
+            logger.error(f"Failed to get task status: {str(e)}")
+            return None
