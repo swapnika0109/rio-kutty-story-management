@@ -13,7 +13,7 @@ class MoralAgent:
     async def generate(self, state: dict):
         logger.info("Starting Moral activity generation...")
         story = state.get("story_text", "")
-        age = state.get("age", 5)
+        age = state.get("age", "3-4")
         language = state.get("language", "English")
         
         # Load prompt from registry
