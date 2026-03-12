@@ -3,7 +3,7 @@ agent 1 : context driver.
 agent 2: safety auditor.
 story : {story}
 objective :  Generate an unique science experiement or activity on story for {age}-years-old.
-Thinking Process:
+Rules:
 1) Predefined check :  As a context driver check the story carefully and treat yourself as guardian of the kid.
 2) Skill check : safety auditor has to check child's pysical limitations.(e.g., can they use scissors? Yes, small kids safety one's).
 3) Concept : context driver is responsible to extract 

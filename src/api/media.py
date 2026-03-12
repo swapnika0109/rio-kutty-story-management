@@ -20,6 +20,7 @@ class GenerateMediaRequest(BaseModel):
     story_id: str
     age: str
     language: str = "en"
+    voice_type: Optional[str] = None  # "chirp" | "standard" (default: "standard")
 
 
 class ResumeWorkflowRequest(BaseModel):
@@ -56,6 +57,7 @@ async def _run_master_workflow(request: GenerateMediaRequest):
                 "age":       request.age,
                 "language":  story.get("language", request.language),
                 "theme":     theme,
+                "voice":     request.voice_type,
             },
             "callbacks": get_trace_callbacks(
                 name="master-pipeline",

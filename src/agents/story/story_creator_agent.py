@@ -98,6 +98,11 @@ class StoryCreatorAgent:
             # Fall back to the topic title if the LLM didn't include one
             if not story.get("title") and topic_title:
                 story["title"] = topic_title
+            # Inject runtime fields the LLM doesn't return but the validator requires
+            if not story.get("age_group"):
+                story["age_group"] = age
+            if not story.get("language"):
+                story["language"] = language
             logger.info(f"[StoryCreator] Generated story: '{story.get('title', 'untitled')}'")
             return {
                 "story": story,
@@ -116,20 +121,48 @@ class StoryCreatorAgent:
             cleaned = response.replace("```json", "").replace("```", "").strip()
             data = json.loads(cleaned)
         except json.JSONDecodeError:
-            start = response.find("{")
-            end = response.rfind("}")
-            if start != -1 and end != -1:
-                data = json.loads(response[start : end + 1])
-            else:
-                raise ValueError(f"Could not parse story from response: {response[:200]}")
+            # LLM sometimes embeds raw newlines/control chars inside JSON string values.
+            # Escape them so the parser can proceed.
+            sanitized = self._escape_control_chars(cleaned)
+            try:
+                data = json.loads(sanitized)
+            except json.JSONDecodeError:
+                start = sanitized.find("{")
+                end = sanitized.rfind("}")
+                if start != -1 and end != -1:
+                    data = json.loads(sanitized[start : end + 1])
+                else:
+                    raise ValueError(f"Could not parse story from response: {response[:200]}")
 
         # Prompts use "story" key; normalise to "story_text" expected by the rest of the pipeline
         if "story" in data and "story_text" not in data:
             data["story_text"] = data.pop("story")
 
-        # Derive title from topic if the LLM omitted it (topic is injected into the prompt)
-        # The caller's state["selected_topic"]["title"] is the canonical title
-        # but we don't have it here, so leave it blank and let save_story fall back gracefully.
-        # The real fix: prompts should include "title" in the JSON schema.
-
         return data
+
+    @staticmethod
+    def _escape_control_chars(s: str) -> str:
+        """Escape raw control characters that appear inside JSON string values."""
+        _escapes = {'\n': '\\n', '\r': '\\r', '\t': '\\t', '\b': '\\b', '\f': '\\f'}
+        result = []
+        in_string = False
+        i = 0
+        while i < len(s):
+            c = s[i]
+            if c == '\\' and in_string:
+                # Already-escaped sequence — pass both chars through unchanged
+                result.append(c)
+                i += 1
+                if i < len(s):
+                    result.append(s[i])
+                i += 1
+                continue
+            if c == '"':
+                in_string = not in_string
+                result.append(c)
+            elif in_string and ord(c) < 0x20:
+                result.append(_escapes.get(c, f'\\u{ord(c):04x}'))
+            else:
+                result.append(c)
+            i += 1
+        return ''.join(result)

@@ -1,8 +1,2 @@
-# Image Generator Prompt — v1
-# Variables available: {story_text}, {story_title}, {age}, {language}
-# Expected output: A single descriptive text string (the image prompt for FLUX.1-schnell)
-#   - Should be vivid, child-friendly, colourful
-#   - No JSON wrapper needed — just the raw prompt text
-#
-# TODO: Write your prompt here
+
 

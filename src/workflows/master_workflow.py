@@ -29,6 +29,7 @@ Checkpoint cleanup:
 import asyncio
 import json
 import os
+import random
 from typing import Literal
 from langgraph.graph import StateGraph, END
 from langgraph.checkpoint.memory import MemorySaver
@@ -49,6 +50,66 @@ logger = setup_logger(__name__)
 settings = get_settings()
 
 firestore = FirestoreService()
+
+# ---------------------------------------------------------------------------
+# Voice pool — each story gets a randomly selected voice so the UI sounds
+# different on every "next" swipe.
+#
+# Request JSON sends voice_type = "chirp" | "standard" (default: "standard").
+# Full voice name is built as:  {lang_prefix}-{country}{suffix}
+# e.g.  en-US-Standard-A  or  en-US-Chirp3-HD-Gacrux
+# ---------------------------------------------------------------------------
+
+# Language display name → (BCP-47 prefix, country code)
+_LANG_MAP: dict[str, tuple[str, str]] = {
+    "english": ("en", "US"),
+    "telugu":  ("te", "IN"),
+    "en":      ("en", "US"),
+    "te":      ("te", "IN"),
+}
+
+_CHIRP_SUFFIXES: list[str] = [
+    "-Chirp3-HD-Gacrux",
+    "-Chirp3-HD-Callirrhoe",
+    "-Chirp3-HD-Despina",
+    "-Chirp3-HD-Iapetus",
+    "-Chirp3-HD-Leda",
+    "-Chirp3-HD-Zephyr",
+    "-Chirp3-HD-Schedar",
+    "-Chirp3-HD-Sadaltager",
+    "-Chirp3-HD-Rasalgethi",
+    "-Chirp3-HD-Umbriel",
+    "-Chirp3-HD-Pulcherrima",
+    "-Chirp3-HD-Charon",
+    "-Chirp3-HD-Zubenelgenubi",
+    "-Chirp3-HD-Achird",
+    "-Chirp3-HD-Algenib",
+    "-Chirp3-HD-Algieba",
+    "-Chirp3-HD-Erinome",
+]
+
+_STANDARD_SUFFIXES: list[str] = [
+    "-Standard-A",
+    "-Standard-B",
+    "-Standard-C",
+    "-Standard-D",
+]
+
+
+def _pick_voice(language: str, voice_type: str | None) -> str:
+    """
+    Build a full BCP-47 voice name for the given language and voice type.
+
+    voice_type: "chirp" → random Chirp3-HD voice
+                "standard" | None → random Standard voice
+
+    Full name format: {lang_prefix}-{country}{suffix}
+    e.g. en-US-Standard-A  or  en-US-Chirp3-HD-Gacrux
+    """
+    lang_prefix, country = _LANG_MAP.get(language.lower(), ("en", "US"))
+    suffixes = _CHIRP_SUFFIXES if (voice_type or "").lower() == "chirp" else _STANDARD_SUFFIXES
+    suffix = random.choice(suffixes)
+    return f"{lang_prefix}-{country}{suffix}"
 
 
 # ---------------------------------------------------------------------------
@@ -147,6 +208,7 @@ async def dispatch_media_node(state: MasterWorkflowState, config: RunnableConfig
     age      = cfg.get("age", "3-4")
     language = cfg.get("language", "English")
     theme    = cfg.get("theme", "theme1")
+    voice    = _pick_voice(language, cfg.get("voice"))
     story    = state.get("story") or {}
 
     logger.info(f"[Master] Dispatching image+audio for story_id={story_id} theme={theme}")
@@ -165,7 +227,7 @@ async def dispatch_media_node(state: MasterWorkflowState, config: RunnableConfig
     wf4_initial = {
         "story_text":  story.get("story_text", ""),
         "language":    language,
-        "voice":       settings.TTS_VOICE_NAME,
+        "voice":       voice,
         "retry_count": 0,
         "status":      "pending",
         "completed":   [],
