@@ -6,7 +6,7 @@ import pytest
 import json
 from unittest.mock import AsyncMock, patch, MagicMock
 
-from src.agents.mcq_agent import MCQAgent
+from src.agents.activities.mcq_agent import MCQAgent
 
 
 class TestMCQAgent:
@@ -15,7 +15,7 @@ class TestMCQAgent:
     @pytest.fixture
     def agent(self):
         """Create MCQAgent instance with mocked AI service."""
-        with patch("src.agents.mcq_agent.AIService") as MockAI:
+        with patch("src.agents.activities.mcq_agent.AIService") as MockAI:
             instance = MockAI.return_value
             instance.generate_content = AsyncMock()
             agent = MCQAgent()
@@ -88,9 +88,9 @@ class TestMCQAgent:
     
     def test_uses_prompt_registry(self):
         """Test that MCQAgent uses the prompt registry."""
-        with patch("src.agents.mcq_agent.get_registry") as mock_registry:
+        with patch("src.agents.activities.mcq_agent.get_registry") as mock_registry:
             mock_registry.return_value.get_prompt.return_value = "test prompt"
             
-            with patch("src.agents.mcq_agent.AIService"):
+            with patch("src.agents.activities.mcq_agent.AIService"):
                 agent = MCQAgent(prompt_version="v1")
                 assert agent.prompt_version == "v1"

@@ -117,8 +117,11 @@ class AudioWorkflowState(TypedDict):
     # Raw audio bytes (MP3) from TTS API.
     audio_bytes: Optional[bytes]
 
-    # GCS path after upload (e.g. "story-audio/{uuid}.mp3").
+    # GCS path after upload (e.g. "story-audio/{uuid}.wav").
     audio_url: Optional[str]
+
+    # Per-paragraph timing: [{ParagraphNumber, StartTimestamp, EndTimestamp, Duration}]
+    audio_timepoints: Optional[List[dict]]
 
     validated: bool
     evaluation: Optional[dict]

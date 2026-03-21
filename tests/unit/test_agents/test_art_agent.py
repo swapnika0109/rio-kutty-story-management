@@ -6,7 +6,7 @@ import pytest
 import json
 from unittest.mock import AsyncMock, patch
 
-from src.agents.art_agent import ArtAgent
+from src.agents.activities.art_agent import ArtAgent
 
 
 class TestArtAgent:
@@ -15,7 +15,7 @@ class TestArtAgent:
     @pytest.fixture
     def agent(self):
         """Create ArtAgent instance with mocked AI service."""
-        with patch("src.agents.art_agent.AIService") as MockAI:
+        with patch("src.agents.activities.art_agent.AIService") as MockAI:
             instance = MockAI.return_value
             instance.generate_content = AsyncMock()
             instance.generate_image = AsyncMock(return_value=b"fake_image")

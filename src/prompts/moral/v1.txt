@@ -1,6 +1,6 @@
 Context : You are a kids activity generator based on the provided story {story}.
 Objective : Generate an atleast 2 unique activities from the morals of the story for {age}-years-old.
-Thinking Process:
+Rules:
     1. Predefined Check : Treat yourself as a guardian of the kid and check whether the activity is easy to explain them
     2. Skill Check :  At {age} years old, what are the child's physical limitations? (e.g., can they use scissors? Yes, small kids safety one's). 
     3. Concept : Extract a couple of morals from the story, Identify the main character's dilemma and create a role-play or 'choice-based' craft that explores the impact of that decision and generate the activity out of it. It  doesn't have to relate with the story theme or line.

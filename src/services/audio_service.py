@@ -13,6 +13,8 @@ Why Google TTS?
 
 import asyncio
 import io
+import struct
+import wave
 from google.cloud import texttospeech
 
 from .database.firestore_service import FirestoreService  # for credential pattern reference
@@ -110,3 +112,99 @@ class AudioService:
         except Exception as e:
             logger.error(f"[AudioService] TTS synthesis failed: {e}")
             return None
+
+    @staticmethod
+    def _wav_duration(wav_bytes: bytes) -> float:
+        """Returns the duration in seconds of a WAV byte string."""
+        with wave.open(io.BytesIO(wav_bytes), "rb") as wf:
+            return wf.getnframes() / wf.getframerate()
+
+    @staticmethod
+    def _combine_wav(wav_chunks: list[bytes]) -> bytes:
+        """Concatenates multiple WAV byte strings into a single WAV."""
+        if not wav_chunks:
+            return b""
+        # Read params from first chunk
+        with wave.open(io.BytesIO(wav_chunks[0]), "rb") as first:
+            params = first.getparams()
+
+        buf = io.BytesIO()
+        with wave.open(buf, "wb") as out:
+            out.setparams(params)
+            for chunk in wav_chunks:
+                with wave.open(io.BytesIO(chunk), "rb") as wf:
+                    out.writeframes(wf.readframes(wf.getnframes()))
+        return buf.getvalue()
+
+    async def synthesize_paragraphs(
+        self,
+        paragraphs: list[str],
+        language_code: str = None,
+        voice_name: str = None,
+    ) -> tuple[bytes, list[dict]] | tuple[None, None]:
+        """
+        Synthesizes each paragraph separately, then combines into one WAV.
+
+        Returns:
+            (combined_wav_bytes, audio_timepoints) on success
+            (None, None) on any failure
+
+        audio_timepoints format:
+            [{"ParagraphNumber": 1, "StartTimestamp": 0.0, "EndTimestamp": 4.58, "Duration": 4.58}, ...]
+        """
+        # Ensure WAV encoding for duration calculation
+        lang = language_code or settings.TTS_LANGUAGE_CODE
+        voice = voice_name or settings.TTS_VOICE_NAME
+
+        try:
+            wav_chunks: list[bytes] = []
+            timepoints: list[dict] = []
+            cursor = 0.0
+
+            for idx, paragraph in enumerate(paragraphs, start=1):
+                if not paragraph.strip():
+                    continue
+
+                synthesis_input = texttospeech.SynthesisInput(text=paragraph)
+                voice_params = texttospeech.VoiceSelectionParams(
+                    language_code=lang,
+                    name=voice,
+                )
+                audio_config = texttospeech.AudioConfig(
+                    audio_encoding=texttospeech.AudioEncoding.LINEAR16,  # WAV
+                )
+
+                loop = asyncio.get_event_loop()
+                response = await loop.run_in_executor(
+                    None,
+                    lambda ap=audio_config, vi=voice_params, si=synthesis_input: self.client.synthesize_speech(
+                        input=si,
+                        voice=vi,
+                        audio_config=ap,
+                    ),
+                )
+
+                chunk_bytes = response.audio_content
+                duration = self._wav_duration(chunk_bytes)
+                end = round(cursor + duration, 4)
+
+                wav_chunks.append(chunk_bytes)
+                timepoints.append({
+                    "ParagraphNumber": idx,
+                    "StartTimestamp": round(cursor, 4),
+                    "EndTimestamp": end,
+                    "Duration": round(duration, 4),
+                })
+                cursor = end
+                logger.info(f"[AudioService] Paragraph {idx}: {duration:.4f}s")
+
+            combined = self._combine_wav(wav_chunks)
+            logger.info(f"[AudioService] Combined WAV: {len(combined)} bytes, {cursor:.4f}s total")
+            return combined, timepoints
+
+        except CircuitBreakerError:
+            logger.error("[AudioService] TTS circuit breaker OPEN")
+            return None, None
+        except Exception as e:
+            logger.error(f"[AudioService] synthesize_paragraphs failed: {e}")
+            return None, None

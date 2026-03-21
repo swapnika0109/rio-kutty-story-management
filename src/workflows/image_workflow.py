@@ -2,12 +2,13 @@
 WF3 — Image Generator Workflow (compiled subgraph)
 
 Flow:
-    [generate_image] → [validate_image] → [evaluate_image]
-                                               ↓
-                                 pass → [save_image] → END (status="completed")
-                                 fail → retry_count < 4?
+    [generate_image] → [validate_image] → [save_image] → END (status="completed")
+                                               ↓ fail
+                                         retry_count < 4?
                                            ↓ yes           ↓ no
                                       [generate_image]   END (status="needs_human")
+
+Evaluation and self-correction are disabled (commented out).
 
 Why this is a compiled subgraph:
 - Manages its own 4-retry loop internally
@@ -18,7 +19,6 @@ Why this is a compiled subgraph:
 Triggered by master_workflow via asyncio.gather alongside WF4 and WF5.
 """
 
-import os
 import uuid
 from typing import Literal
 from langgraph.graph import StateGraph, END
@@ -27,10 +27,9 @@ from langchain_core.runnables import RunnableConfig
 
 from ..models.state import ImageWorkflowState
 from ..agents.media.image_generator_agent import ImageGeneratorAgent
-from ..agents.validators.evaluation_agent import EvaluationAgent
+# from ..agents.validators.evaluation_agent import EvaluationAgent  # evaluation disabled
 from ..services.database.firestore_service import FirestoreService
 from ..services.database.storage_bucket import StorageBucketService
-from ..services.database.checkpoint_service import FirestoreCheckpointer
 from ..utils.logger import setup_logger
 from ..utils.config import get_settings
 
@@ -41,7 +40,7 @@ MAX_RETRIES = settings.PARALLEL_WORKFLOW_MAX_RETRIES
 
 # --- Component instances ---
 image_agent = ImageGeneratorAgent()
-evaluator = EvaluationAgent(workflow_type="image")
+# evaluator = EvaluationAgent(workflow_type="image")  # evaluation disabled
 firestore = FirestoreService()
 storage = StorageBucketService()
 
@@ -76,9 +75,9 @@ async def validate_image_node(state: ImageWorkflowState, config: RunnableConfig)
     return {"validated": True}
 
 
-async def evaluate_image_node(state: ImageWorkflowState, config: RunnableConfig) -> dict:
-    enriched = _unpack_config(state, config)
-    return await evaluator.evaluate(enriched)
+# async def evaluate_image_node(state: ImageWorkflowState, config: RunnableConfig) -> dict:
+#     enriched = _unpack_config(state, config)
+#     return await evaluator.evaluate(enriched)
 
 
 async def save_image_node(state: ImageWorkflowState, config: RunnableConfig) -> dict:
@@ -102,9 +101,10 @@ async def save_image_node(state: ImageWorkflowState, config: RunnableConfig) -> 
         await firestore.save_story_image(story_id, image_url, image_prompt, theme)
         logger.info(f"[WF3] Image saved: {image_url}")
         return {
-            "image_url": image_url,
-            "completed": ["image"],
-            "status": "completed",
+            "image_url":   image_url,
+            "image_bytes": None,   # clear binary from checkpoint — already in GCS
+            "completed":   ["image"],
+            "status":      "completed",
         }
     except Exception as e:
         logger.error(f"[WF3] Firestore update failed: {e}")
@@ -116,26 +116,26 @@ async def save_image_node(state: ImageWorkflowState, config: RunnableConfig) -> 
 
 # --- Routing ---
 
-def route_after_validate(state: ImageWorkflowState) -> Literal["evaluate_image", "generate_image", "__end__"]:
+def route_after_validate(state: ImageWorkflowState) -> Literal["save_image", "generate_image", "__end__"]:
     if state.get("errors"):
         if state.get("retry_count", 0) >= MAX_RETRIES:
             return END
     if state.get("validated"):
-        return "evaluate_image"
-    if state.get("retry_count", 0) >= MAX_RETRIES:
-        return END
-    return "generate_image"
-
-
-def route_after_evaluate(
-    state: ImageWorkflowState,
-) -> Literal["save_image", "generate_image", "__end__"]:
-    evaluation = state.get("evaluation") or {}
-    if evaluation.get("passed"):
         return "save_image"
     if state.get("retry_count", 0) >= MAX_RETRIES:
         return END
     return "generate_image"
+
+
+# def route_after_evaluate(
+#     state: ImageWorkflowState,
+# ) -> Literal["save_image", "generate_image", "__end__"]:
+#     evaluation = state.get("evaluation") or {}
+#     if evaluation.get("passed"):
+#         return "save_image"
+#     if state.get("retry_count", 0) >= MAX_RETRIES:
+#         return END
+#     return "generate_image"
 
 
 async def mark_needs_human_node(state: ImageWorkflowState, config: RunnableConfig) -> dict:
@@ -156,7 +156,7 @@ workflow = StateGraph(ImageWorkflowState)
 
 workflow.add_node("generate_image", generate_image_node)
 workflow.add_node("validate_image", validate_image_node)
-workflow.add_node("evaluate_image", evaluate_image_node)
+# workflow.add_node("evaluate_image", evaluate_image_node)  # evaluation disabled
 workflow.add_node("save_image", save_image_node)
 workflow.add_node("mark_needs_human", mark_needs_human_node)
 
@@ -166,26 +166,25 @@ workflow.add_conditional_edges(
     "validate_image",
     route_after_validate,
     {
-        "evaluate_image": "evaluate_image",
+        "save_image":     "save_image",
         "generate_image": "generate_image",
-        END: "mark_needs_human",
+        END:              "mark_needs_human",
     },
 )
-workflow.add_conditional_edges(
-    "evaluate_image",
-    route_after_evaluate,
-    {
-        "save_image": "save_image",
-        "generate_image": "generate_image",
-        END: "mark_needs_human",
-    },
-)
+# workflow.add_conditional_edges(
+#     "evaluate_image",
+#     route_after_evaluate,
+#     {
+#         "save_image": "save_image",
+#         "generate_image": "generate_image",
+#         END: "mark_needs_human",
+#     },
+# )
 workflow.add_edge("save_image", END)
 workflow.add_edge("mark_needs_human", END)
 
-if os.environ.get("USE_MEMORY_CHECKPOINTER", "false").lower() == "true":
-    checkpointer = MemorySaver()
-else:
-    checkpointer = FirestoreCheckpointer()
-
-image_workflow = workflow.compile(checkpointer=checkpointer)
+# WF3 does not need persistent checkpointing — it runs in seconds, stores no
+# human-interrupt state, and binary image_bytes would exceed Firestore's 1 MB
+# document limit.  MemorySaver is used so LangGraph's internal graph machinery
+# still works, but nothing is written to Firestore.
+image_workflow = workflow.compile(checkpointer=MemorySaver())

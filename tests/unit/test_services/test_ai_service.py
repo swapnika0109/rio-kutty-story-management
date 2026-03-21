@@ -24,6 +24,8 @@ class TestAIServiceFallback:
     @pytest.mark.asyncio
     async def test_uses_fallback_when_primary_fails(self):
         service = AIService()
+        # Ensure models are distinct so the fallback path is reachable
+        service.fallback_model_name = "gemini-2.0-flash-001"
         service._generate_with_primary = AsyncMock(side_effect=RuntimeError("primary failed"))
         service._generate_with_fallback = AsyncMock(return_value='{"ok": true, "source": "fallback"}')
 

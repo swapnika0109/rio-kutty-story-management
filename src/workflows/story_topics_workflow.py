@@ -143,9 +143,10 @@ async def batch_create_stories_node(state: StoryTopicsState, config: RunnableCon
     from ..utils.tracing import get_trace_callbacks
 
     cfg = config.get("configurable", {})
-    age      = cfg.get("age", "3-4")
-    language = cfg.get("language", "English")
-    lang_code = _LANG_CODE_MAP.get(language.lower(), language[:2].lower())
+    age        = cfg.get("age", "3-4")
+    language   = cfg.get("language", "English")
+    voice_type = cfg.get("voice")
+    lang_code  = _LANG_CODE_MAP.get(language.lower(), language[:2].lower())
 
     topics = state.get("topics") or []
     if not topics:
@@ -163,11 +164,123 @@ async def batch_create_stories_node(state: StoryTopicsState, config: RunnableCon
     async def _run_topic_pipeline(topic: dict) -> tuple[str, str, bool]:
         """Returns (title, story_id, success)."""
         title      = topic.get("title", "")
-        story_id   = str(uuid.uuid4())
         theme      = topic.get("theme", "")
         filter_val = topic.get("filter_value", "")
 
         async with semaphore:
+            # ----------------------------------------------------------------
+            # Resume check: find any existing story for this topic so we don't
+            # regenerate it.  Two ways the story_id can be known:
+            #   1. topic dict has story_id (patched in by update_title_story_id)
+            #   2. story already exists in Firestore by title (e.g. update_title_story_id
+            #      was never called because the process crashed after WF2 saved)
+            # ----------------------------------------------------------------
+            existing_story_id = topic.get("story_id")
+            existing = None
+
+            if existing_story_id:
+                existing = await firestore.get_story(existing_story_id, theme)
+
+            if not existing and title:
+                # Fallback: search by title in case story_id wasn't patched into topic doc
+                existing = await firestore.get_story_by_title(title, theme)
+                if existing:
+                    existing_story_id = existing.get("story_id")
+                    logger.info(
+                        f"[WF1/batch] Found existing story by title '{title}' "
+                        f"(story_id={existing_story_id}) — patching topic doc"
+                    )
+                    # Patch it back so future runs don't need the title query
+                    try:
+                        await firestore.update_title_story_id(
+                            theme, age, lang_code, filter_val, title, existing_story_id
+                        )
+                    except Exception as _e:
+                        logger.warning(f"[WF1/batch] Could not back-patch story_id for '{title}': {_e}")
+
+            if existing_story_id and existing and existing.get("story_text", "").strip():
+                needs_image      = not existing.get("image_url")
+                needs_audio      = not existing.get("audio_url")
+                done_activities  = existing.get("activities", {})
+                activity_types   = {"mcq", "art", "science", "moral"}
+                needs_activities = not activity_types.issubset(done_activities.keys())
+
+                if not needs_image and not needs_audio and not needs_activities:
+                    logger.info(f"[WF1/batch] Already complete — skipping: '{title}'")
+                    return title, existing_story_id, True
+
+                logger.info(
+                    f"[WF1/batch] Resuming '{title}' ({existing_story_id}): "
+                    f"image={needs_image} audio={needs_audio} activities={needs_activities}"
+                )
+
+                if needs_image or needs_audio:
+                    master_config = {
+                        "configurable": {
+                            "thread_id": f"{existing_story_id}_master",
+                            "story_id":  existing_story_id,
+                            "age":       age,
+                            "language":  language,
+                            "theme":     theme,
+                            "voice":     voice_type,
+                        },
+                        "callbacks": get_trace_callbacks(
+                            name="master-pipeline",
+                            metadata={"story_id": existing_story_id, "topic": title,
+                                      "theme": theme, "age": age},
+                            tags=["master", "resume", "batch"],
+                            session_id=topics_id,
+                        ),
+                    }
+                    master_initial = {
+                        "story_id":            existing_story_id,
+                        "topics":              None,
+                        "story":               existing,
+                        "workflow_statuses":   {},
+                        "workflow_retries":    {},
+                        "human_loop_requests": {},
+                        "human_decisions":     {},
+                        "errors":              {},
+                    }
+                    try:
+                        await master_workflow.ainvoke(master_initial, config=master_config)
+                    except Exception as e:
+                        logger.error(f"[WF1/batch] Resume master failed for '{title}': {e}")
+                elif needs_activities:
+                    from ..workflows.activity_workflow import app_workflow as activity_workflow
+                    wf5_config = {
+                        "configurable": {
+                            "thread_id":        f"{existing_story_id}_wf5",
+                            "story_id":         existing_story_id,
+                            "story_text":       existing.get("story_text", ""),
+                            "age":              age,
+                            "language":         language,
+                            "mcq_seeds":        existing.get("mcq_seeds", []),
+                            "art_seed":         existing.get("art_seed", ""),
+                            "science_concepts": existing.get("science_concepts", []),
+                            "moral":            existing.get("moral", ""),
+                        },
+                    }
+                    wf5_initial = {
+                        "activities":  {},
+                        "images":      {},
+                        "completed":   [],
+                        "errors":      {},
+                        "retry_count": {},
+                        "status":      "pending",
+                    }
+                    try:
+                        await activity_workflow.ainvoke(wf5_initial, config=wf5_config)
+                    except Exception as e:
+                        logger.error(f"[WF1/batch] Resume activities failed for '{title}': {e}")
+
+                return title, existing_story_id, True
+
+            # ----------------------------------------------------------------
+            # Fresh run: no story yet — full WF2 → Master pipeline
+            # ----------------------------------------------------------------
+            story_id = str(uuid.uuid4())
+
             # --- WF2: Story Creator ---
             wf2_config = {
                 "configurable": {
@@ -213,6 +326,7 @@ async def batch_create_stories_node(state: StoryTopicsState, config: RunnableCon
                     "age":       age,
                     "language":  language,
                     "theme":     theme,
+                    "voice":     voice_type,
                 },
                 "callbacks": get_trace_callbacks(
                     name="master-pipeline",

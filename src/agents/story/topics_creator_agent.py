@@ -286,12 +286,31 @@ class TopicsCreatorAgent:
         Reads from Firestore cache; calls LLM only on cache miss.
         """
         # 1. Cache check
+        n = settings.TOPICS_PER_THEME
         cached = await self.db.get_title_library_entry(theme_name, age, lang, filter_value)
         if cached:
-            logger.info(f"[TopicsCreator] Cache hit: {theme_name}/{filter_value}")
-            return cached
+            if len(cached) >= n:
+                logger.info(f"[TopicsCreator] Cache hit: {theme_name}/{filter_value} ({len(cached)} topics)")
+                return cached
+            # Cache exists but has fewer than requested — generate the remaining ones below
+            logger.info(
+                f"[TopicsCreator] Partial cache hit: {theme_name}/{filter_value} "
+                f"({len(cached)}/{n}) — generating {n - len(cached)} more"
+            )
 
-        # 2. Load prompt (skip silently if file not written yet)
+        # 2. Inject duplicate-prevention context when we have partial cache
+        need = n - len(cached) if cached else n
+        if cached:
+            existing_titles_str = ", ".join(t["title"] for t in cached)
+            prompt_kwargs = {
+                **prompt_kwargs,
+                "length":          need,
+                "existing_titles": existing_titles_str,
+            }
+        else:
+            prompt_kwargs = {**prompt_kwargs, "existing_titles": ""}
+
+        # 3. Load prompt (skip silently if file not written yet)
         try:
             prompt = registry.get_prompt(
                 f"story_topics/{theme_name}",
@@ -304,7 +323,7 @@ class TopicsCreatorAgent:
             )
             return []
 
-        # 3. LLM call
+        # 4. LLM call
         try:
             response = await self.ai_service.generate_content(
                 prompt,
@@ -315,11 +334,22 @@ class TopicsCreatorAgent:
             logger.error(f"[TopicsCreator] LLM failed for {theme_name}/{filter_value}: {e}")
             return []
 
-        # 4. Parse
-        titles = _parse_pipe_response(response, theme_name, filter_type, filter_value)
-        logger.info(f"[TopicsCreator] {theme_name}/{filter_value}: {len(titles)} titles")
+        # 5. Parse
+        new_titles = _parse_pipe_response(response, theme_name, filter_type, filter_value)
+        logger.info(f"[TopicsCreator] {theme_name}/{filter_value}: {len(new_titles)} new titles")
 
-        # 5. Save to cache (non-fatal if it fails)
+        # 6. Merge with existing cached titles (dedup by title text)
+        if cached:
+            existing_set = {t["title"] for t in cached}
+            deduped = [t for t in new_titles if t["title"] not in existing_set]
+            titles = cached + deduped
+            logger.info(
+                f"[TopicsCreator] Merged: {len(cached)} cached + {len(deduped)} new = {len(titles)} total"
+            )
+        else:
+            titles = new_titles
+
+        # 7. Save to cache (non-fatal if it fails)
         if titles:
             try:
                 await self.db.save_title_library_entry(

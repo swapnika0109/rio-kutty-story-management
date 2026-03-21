@@ -20,6 +20,7 @@ class GenerateTopicsRequest(BaseModel):
     age: str
     language: str = "en"
     theme: Optional[str] = None
+    voice: Optional[str] = None
     preferences: Optional[list] = ["Any"]
 
 
@@ -40,11 +41,13 @@ async def _run_topics_workflow(request: GenerateTopicsRequest):
                 "age": request.age,
                 "language": request.language,
                 "theme": request.theme or "",
+                "voice": request.voice or "",
             },
             "callbacks": get_trace_callbacks(
                 name="WF1-topics",
                 metadata={"age": request.age, "language": request.language,
-                          "country": request.country, "theme": request.theme},
+                          "country": request.country, "theme": request.theme, "voice": request.voice},
+
                 tags=["wf1", "topics"],
                 session_id=session_id,
             ),
@@ -74,11 +77,12 @@ async def _run_story_workflow(story_id: str, selected_topic: dict, age: str, lan
                 "religion": selected_topic.get("religion", ["Any"]),
                 "preferences": selected_topic.get("preferences", ["Any"]),
                 "language": language,
+                "voice": selected_topic.get("voice", ""),
             },
             "callbacks": get_trace_callbacks(
                 name="WF2-story",
                 metadata={"story_id": story_id, "topic": selected_topic.get("title"),
-                          "theme": selected_topic.get("theme"), "age": age},
+                          "theme": selected_topic.get("theme"), "age": age, "voice": selected_topic.get("voice")},
                 tags=["wf2", "story"],
                 session_id=story_id,
             ),

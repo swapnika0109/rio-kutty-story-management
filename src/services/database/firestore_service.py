@@ -151,6 +151,28 @@ class FirestoreService:
             logger.error(f"get_story failed: {e}")
             return None
 
+    async def get_story_by_title(self, title: str, theme: str | None = None) -> dict | None:
+        """
+        Queries story collections for a doc whose 'title' field matches exactly.
+        Returns the first match, or None. Used to detect already-generated stories
+        when the topic doc hasn't had story_id patched in yet.
+        """
+        try:
+            cols = [self._story_collection(theme)] if theme else list(_STORY_COLLECTIONS.values())
+            for col in cols:
+                docs = (
+                    self.db.collection(col)
+                    .where("title", "==", title)
+                    .limit(1)
+                    .get()
+                )
+                if docs:
+                    return docs[0].to_dict()
+            return None
+        except Exception as e:
+            logger.error(f"get_story_by_title failed for '{title}': {e}")
+            return None
+
     async def save_story(self, story_id: str, story: dict, theme: str, topics_id: str | None = None) -> None:
         """Saves/upserts story to the theme story collection with story_id as document ID."""
         try:
@@ -194,15 +216,24 @@ class FirestoreService:
             raise
 
     async def save_story_audio(
-        self, story_id: str, audio_url: str, language: str, voice: str, theme: str
+        self,
+        story_id: str,
+        audio_url: str,
+        language: str,
+        voice: str,
+        theme: str,
+        audio_timepoints: list | None = None,
     ) -> None:
-        """Updates audio_url on the story doc and logs metadata in story_audio_v1."""
+        """Updates audio_url and audio_timepoints on the story doc and logs metadata in story_audio_v1."""
         try:
             col = self._story_collection(theme)
-            self.db.collection(col).document(story_id).update({
+            story_update = {
                 "audio_url": audio_url,
                 "updated_at": firestore.SERVER_TIMESTAMP,
-            })
+            }
+            if audio_timepoints:
+                story_update["audio_timepoints"] = audio_timepoints
+            self.db.collection(col).document(story_id).update(story_update)
             self.db.collection("story_audio_v1").document().set({
                 "story_id": story_id,
                 "audio_url": audio_url,
@@ -328,13 +359,30 @@ class FirestoreService:
         stripped from each topic item to avoid repetition.
         """
         import uuid as _uuid
-        # Strip per-topic fields that are already on the doc to avoid repetition
+        # Strip per-topic fields that are already on the doc to avoid repetition,
+        # but preserve story_id if already set — it must survive re-saves.
         _strip = {"filter_type", "filter_value"}
         clean_topics = [{k: v for k, v in t.items() if k not in _strip} for t in titles]
         try:
             col = self._topic_collection(theme)
             doc_id = self._library_doc_id(age, lang, filter_value)
-            self.db.collection(col).document(doc_id).set({
+            doc_ref = self.db.collection(col).document(doc_id)
+
+            # Preserve story_id values that were previously patched in by update_title_story_id.
+            # Without this, a re-save would wipe them and WF2 would re-run for existing stories.
+            existing_doc = doc_ref.get()
+            if existing_doc.exists:
+                existing_by_title = {
+                    t.get("title"): t.get("story_id")
+                    for t in existing_doc.to_dict().get("topics", [])
+                    if t.get("story_id")
+                }
+                for t in clean_topics:
+                    sid = existing_by_title.get(t.get("title"))
+                    if sid:
+                        t["story_id"] = sid
+
+            doc_ref.set({
                 "topics_id":    topics_id or str(_uuid.uuid4()),
                 "theme":        theme,
                 "age":          age,

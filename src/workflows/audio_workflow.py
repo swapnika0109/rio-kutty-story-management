@@ -13,7 +13,6 @@ Single audio file per story in the story's requested language.
 Triggered by master_workflow via asyncio.gather alongside WF3 and WF5.
 """
 
-import os
 import uuid
 from typing import Literal
 from langgraph.graph import StateGraph, END
@@ -25,7 +24,6 @@ from ..agents.media.audio_generator_agent import AudioGeneratorAgent
 from ..agents.validators.evaluation_agent import EvaluationAgent
 from ..services.database.firestore_service import FirestoreService
 from ..services.database.storage_bucket import StorageBucketService
-from ..services.database.checkpoint_service import FirestoreCheckpointer
 from ..utils.logger import setup_logger
 from ..utils.config import get_settings
 
@@ -83,15 +81,13 @@ async def save_audio_node(state: AudioWorkflowState, config: RunnableConfig) -> 
     story_id = cfg.get("story_id")
     theme = cfg.get("theme", "theme1")
     audio_bytes = state.get("audio_bytes")
+    audio_timepoints = state.get("audio_timepoints")
     language = state.get("language", settings.TTS_LANGUAGE_CODE)
     voice = state.get("voice", settings.TTS_VOICE_NAME)
 
-    ext = settings.TTS_AUDIO_ENCODING.lower()
-    _mime = {"mp3": "audio/mpeg", "wav": "audio/wav", "ogg": "audio/ogg", "flac": "audio/flac"}
-    content_type = _mime.get(ext, "audio/mpeg")
-
-    filename = f"story-audio/{uuid.uuid4()}.{ext}"
-    audio_url = await storage.upload_file(filename, audio_bytes, content_type=content_type)
+    # Always WAV — paragraphs are combined as WAV regardless of TTS_AUDIO_ENCODING
+    filename = f"story-audio/{uuid.uuid4()}.wav"
+    audio_url = await storage.upload_file(filename, audio_bytes, content_type="audio/wav")
 
     if not audio_url:
         logger.error(f"[WF4] GCS upload failed for story_id={story_id}")
@@ -101,12 +97,14 @@ async def save_audio_node(state: AudioWorkflowState, config: RunnableConfig) -> 
         }
 
     try:
-        await firestore.save_story_audio(story_id, audio_url, language, voice, theme)
+        await firestore.save_story_audio(story_id, audio_url, language, voice, theme, audio_timepoints)
         logger.info(f"[WF4] Audio saved: {audio_url}")
         return {
-            "audio_url": audio_url,
-            "completed": ["audio"],
-            "status": "completed",
+            "audio_url":        audio_url,
+            "audio_timepoints": audio_timepoints,
+            "audio_bytes":      None,   # clear binary from checkpoint — already in GCS
+            "completed":        ["audio"],
+            "status":           "completed",
         }
     except Exception as e:
         logger.error(f"[WF4] Firestore update failed: {e}")
@@ -181,9 +179,8 @@ workflow.add_conditional_edges(
 workflow.add_edge("save_audio", END)
 workflow.add_edge("mark_needs_human", END)
 
-if os.environ.get("USE_MEMORY_CHECKPOINTER", "false").lower() == "true":
-    checkpointer = MemorySaver()
-else:
-    checkpointer = FirestoreCheckpointer()
-
-audio_workflow = workflow.compile(checkpointer=checkpointer)
+# WF4 does not need persistent checkpointing — it runs in seconds, stores no
+# human-interrupt state, and binary audio_bytes would exceed Firestore's 1 MB
+# document limit.  MemorySaver is used so LangGraph's internal graph machinery
+# still works, but nothing is written to Firestore.
+audio_workflow = workflow.compile(checkpointer=MemorySaver())
