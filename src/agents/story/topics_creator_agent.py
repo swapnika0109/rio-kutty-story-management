@@ -16,6 +16,7 @@ Output state["topics"] — flat list of dicts:
 
 import asyncio
 import json
+import random
 import re
 import uuid
 
@@ -256,15 +257,16 @@ class TopicsCreatorAgent:
                     all_topics.extend(result)
 
         # ------------------------------------------------------------------
-        # Theme 3 — ChillStories, one record per LIFESTYLE AREA (all 7)
+        # Theme 3 — ChillStories, one randomly selected lifestyle area
         # ------------------------------------------------------------------
         if run_theme3:
             lifestyle_areas = (
                 ChillStoriesTopics().topics.get("meta", {}).get("lifestyle_areas", [])
             )
-
-            t3_results = await asyncio.gather(*[
-                self._generate_one(
+            if lifestyle_areas:
+                area = random.choice(lifestyle_areas)
+                logger.info(f"[TopicsCreator] theme3 selected lifestyle area: {area}")
+                t3 = await self._generate_one(
                     theme_name   = "theme3",
                     version      = version,
                     filter_type  = "lifestyle_area",
@@ -276,12 +278,7 @@ class TopicsCreatorAgent:
                     },
                     age=age, lang=lang_code, registry=registry,
                 )
-                for area in lifestyle_areas
-            ], return_exceptions=True)
-
-            for result in t3_results:
-                if isinstance(result, list):
-                    all_topics.extend(result)
+                all_topics.extend(t3)
 
         logger.info(f"[TopicsCreator] Total topics collected: {len(all_topics)}")
 
