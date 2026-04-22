@@ -1,6 +1,8 @@
-from fastapi import APIRouter, BackgroundTasks, HTTPException
+from fastapi import APIRouter, BackgroundTasks, HTTPException, Request
 from pydantic import BaseModel
 from typing import Optional
+import base64
+import json
 import uuid
 
 from ..workflows.story_topics_workflow import story_topics_workflow
@@ -108,6 +110,41 @@ async def generate_topics(request: GenerateTopicsRequest, background_tasks: Back
     logger.info(f"WF1 triggered for topics")
     background_tasks.add_task(_run_topics_workflow, request)
     return {"status": "accepted", "message": "Story topics generation started"}
+
+
+@router.post("/pubsub/generate-topics", status_code=204)
+async def pubsub_generate_topics(request: Request, background_tasks: BackgroundTasks):
+    """
+    Pub/Sub push endpoint for topic generation.
+
+    GCP Pub/Sub push subscription should point to:
+        POST https://<your-cloud-run-url>/pubsub/generate-topics
+
+    Message body must be a base64-encoded JSON matching GenerateTopicsRequest:
+        {
+          "age": "3-4",
+          "language": "en",
+          "country": "India",
+          "religion": ["Hindu"],
+          "theme": "2",
+          "voice": null,
+          "preferences": ["Any"]
+        }
+    """
+    try:
+        envelope = await request.json()
+        message = envelope.get("message", {})
+        data = message.get("data", "")
+        payload = json.loads(base64.b64decode(data).decode("utf-8"))
+        topics_request = GenerateTopicsRequest(**payload)
+    except Exception as e:
+        logger.error(f"[PubSub] Failed to parse message: {e}")
+        # Return 400 so Pub/Sub does NOT retry a malformed message
+        raise HTTPException(status_code=400, detail=f"Invalid Pub/Sub message: {e}")
+
+    logger.info(f"[PubSub] generate-topics received: age={topics_request.age} theme={topics_request.theme}")
+    background_tasks.add_task(_run_topics_workflow, topics_request)
+    return  # 204 No Content — tells Pub/Sub the message was acknowledged
 
 
 @router.post("/select-topic", status_code=202)

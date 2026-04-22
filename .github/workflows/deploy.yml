@@ -54,4 +54,10 @@ jobs:
             LOG_LEVEL=INFO
             GOOGLE_API_KEY=${{ secrets.GOOGLE_API_KEY }}
             HF_TOKEN=${{ secrets.HF_TOKEN }}
+            LANGFUSE_ENABLED=true
+            LANGFUSE_PUBLIC_KEY=${{ secrets.LANGFUSE_PUBLIC_KEY }}
+            LANGFUSE_SECRET_KEY=${{ secrets.LANGFUSE_SECRET_KEY }}
+            LANGFUSE_HOST=https://us.cloud.langfuse.com
+            STORAGE_BUCKET_NAME=${{ secrets.STORAGE_BUCKET_NAME }}
+            GOOGLE_CLOUD_PROJECT=riokutty
 

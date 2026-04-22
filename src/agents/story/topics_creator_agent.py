@@ -168,11 +168,18 @@ class TopicsCreatorAgent:
         State fields used (from config.configurable via _unpack_config):
             age, language, religion, country, theme (optional — if set, only that theme runs)
         """
-        age      = state.get("age", "3-4")
-        language = state.get("language", "English")
-        religion = state.get("religion", "universal_wisdom")
-        country  = state.get("country", "Any")
-        theme    = state.get("theme", "")   # e.g. "theme1", "theme2", "theme3", or "" for all
+        age         = state.get("age", "3-4")
+        language    = state.get("language", "English")
+        religion    = state.get("religion", "universal_wisdom")
+        country     = state.get("country", "Any")
+        theme       = state.get("theme", "")   # e.g. "theme1", "theme2", "theme3", or "" for all
+        preferences = state.get("preferences", ["any"])
+        # Normalise preferences to a single string key for the cache doc ID
+        pref_key = (
+            preferences[0].lower().strip()
+            if isinstance(preferences, list) and preferences
+            else str(preferences).lower().strip()
+        ) or "any"
 
         lang_code = _LANG_CODE.get(language, "en")
         version   = f"v{self.prompt_version}_{lang_code}"
@@ -258,6 +265,8 @@ class TopicsCreatorAgent:
 
         # ------------------------------------------------------------------
         # Theme 3 — ChillStories, one randomly selected lifestyle area
+        # Cache key uses pref_key (e.g. "any") so same user always hits the
+        # same doc regardless of which area is randomly picked each run.
         # ------------------------------------------------------------------
         if run_theme3:
             lifestyle_areas = (
@@ -265,12 +274,12 @@ class TopicsCreatorAgent:
             )
             if lifestyle_areas:
                 area = random.choice(lifestyle_areas)
-                logger.info(f"[TopicsCreator] theme3 selected lifestyle area: {area}")
+                logger.info(f"[TopicsCreator] theme3 area={area} cache_key={pref_key}")
                 t3 = await self._generate_one(
                     theme_name   = "theme3",
                     version      = version,
-                    filter_type  = "lifestyle_area",
-                    filter_value = area,
+                    filter_type  = "preference",
+                    filter_value = pref_key,       # e.g. "any" — stable cache key
                     prompt_kwargs= {
                         "age":        age,
                         "length":     n,
