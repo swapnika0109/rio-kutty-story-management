@@ -55,8 +55,8 @@ def _parse_age_range(age: str) -> tuple[int, int]:
         return 3, 9
 
 
-def _pp_prompt_text(age: str, n: int) -> str:
-    """Age-filtered PlanetProtector topic names, comma-separated."""
+def _pp_subjects(age: str) -> list[str]:
+    """Returns the ordered list of distinct subjects available for the given age."""
     age_min, age_max = _parse_age_range(age)
     topics = PlanetProtector().topics.get("topics", [])
     filtered = [
@@ -65,14 +65,48 @@ def _pp_prompt_text(age: str, n: int) -> str:
         and t.get("age_min", 0) <= age_max
         and t.get("age_max", 99) >= age_min
     ] or topics
-    return ", ".join(t["name"] for t in filtered[:n])
+    seen: set[str] = set()
+    subjects: list[str] = []
+    for t in filtered:
+        s = t.get("subject", "")
+        if s and s not in seen:
+            seen.add(s)
+            subjects.append(s)
+    return subjects
+
+
+def _pp_prompt_text(age: str, n: int, slot_index: int = 0) -> str:
+    """
+    Age-filtered PlanetProtector topic names for a specific subject slot.
+    slot_index cycles through available subjects so each preference slot
+    draws from a different subject category, keeping stories vibrant.
+    """
+    age_min, age_max = _parse_age_range(age)
+    topics = PlanetProtector().topics.get("topics", [])
+    filtered = [
+        t for t in topics
+        if t.get("is_active", True)
+        and t.get("age_min", 0) <= age_max
+        and t.get("age_max", 99) >= age_min
+    ] or topics
+    subjects = _pp_subjects(age)
+    if subjects:
+        subject = subjects[slot_index % len(subjects)]
+        subject_topics = [t for t in filtered if t.get("subject") == subject]
+        if subject_topics:
+            random.shuffle(subject_topics)
+            return ", ".join(t["name"] for t in subject_topics[:max(n * 3, 10)])
+    random.shuffle(filtered)
+    return ", ".join(t["name"] for t in filtered[:max(n * 3, 10)])
 
 
 def _mindful_prompt_text(religion_key: str, n: int) -> str:
     """Religion source list for one religion, comma-separated."""
     sources_map = MindfullTopics().topics.get("religion_sources", {})
     sources = sources_map.get(religion_key) or sources_map.get("universal_wisdom", [])
-    return ", ".join(sources[:n])
+    shuffled = list(sources)
+    random.shuffle(shuffled)
+    return ", ".join(shuffled[:max(n * 3, 10)])
 
 
 def _chill_prompt_text(lifestyle_area: str, age: str, n: int) -> str:
@@ -86,7 +120,9 @@ def _chill_prompt_text(lifestyle_area: str, age: str, n: int) -> str:
         and t.get("age_min", 0) <= age_max
         and t.get("age_max", 99) >= age_min
     ] or [t for t in topics if t.get("lifestyle_area") == lifestyle_area]
-    return ", ".join(t["name"] for t in filtered[:n])
+    shuffled = list(filtered)
+    random.shuffle(shuffled)
+    return ", ".join(t["name"] for t in shuffled[:max(n * 3, 10)])
 
 
 # ---------------------------------------------------------------------------
@@ -203,34 +239,62 @@ class TopicsCreatorAgent:
         all_topics: list[dict] = []
 
         # ------------------------------------------------------------------
-        # Theme 1 — PlanetProtector, one record per COUNTRY
+        # Theme 1 — PlanetProtector, one slot per preference per country.
+        # Cache key: "{country}__{pref}" so docs are e.g. india__excitement
+        # Run sequentially so each slot can exclude titles already generated
+        # by the previous slot, preventing duplicate titles across preferences.
         # ------------------------------------------------------------------
         if run_theme1:
-            t1 = await self._generate_one(
-                theme_name   = "theme1",
-                version      = version,
-                filter_type  = "country",
-                filter_value = country,
-                prompt_kwargs= {
-                    "age":        age,
-                    "length":     n,
-                    "promptText": _pp_prompt_text(age, n),
-                    "country":    country,
-                },
-                age=age, lang=lang_code, registry=registry,
-            )
-            all_topics.extend(t1)
+            t1_prefs: list[str]
+            if isinstance(preferences, list) and preferences:
+                t1_prefs = [p.lower().strip() for p in preferences if p.lower().strip() not in {"any", ""}]
+            else:
+                t1_prefs = []
+
+            if not t1_prefs:
+                t1_prefs = ["any"]
+
+            for slot_idx, pref in enumerate(t1_prefs):
+                result = await self._generate_one(
+                    theme_name   = "theme1",
+                    version      = version,
+                    filter_type  = "country_preference",
+                    filter_value = pref if country.lower() in {"any", ""} else f"{country.lower()}__{pref}",
+                    prompt_kwargs= {
+                        "age":        age,
+                        "length":     n,
+                        "promptText": _pp_prompt_text(age, n, slot_index=slot_idx),
+                        "country":    country,
+                        "preference": pref,
+                    },
+                    age=age, lang=lang_code, registry=registry,
+                )
+                if isinstance(result, list):
+                    all_topics.extend(result)
 
         # ------------------------------------------------------------------
         # Theme 2 — MindfullTopics, filtered by religion (or all if "any")
         # ------------------------------------------------------------------
         if run_theme2:
             all_religions = list(MindfullTopics().topics.get("religion_sources", {}).keys())
+            # Map common user-facing names to taxonomy keys (e.g. "Muslim" → "islam")
+            _religion_alias: dict[str, str] = {
+                "muslim":   "islam",
+                "islamic":  "islam",
+                "hindu":    "hindu",
+                "buddhism": "buddhist",
+                "sikhism":  "sikh",
+                "judaism":  "jewish",
+                "jainism":  "jain",
+                "christianity": "christian",
+            }
             _skip = {"any", "universal_wisdom", ""}
             if isinstance(religion, list):
-                requested_religions = [r.lower().strip() for r in religion if r.lower().strip() not in _skip]
+                raw = [r.lower().strip() for r in religion if r.lower().strip() not in _skip]
             else:
-                requested_religions = [religion.lower().strip()] if religion and religion.lower().strip() not in _skip else []
+                raw = [religion.lower().strip()] if religion and religion.lower().strip() not in _skip else []
+
+            requested_religions = [_religion_alias.get(r, r) for r in raw]
 
             if requested_religions:
                 religions_to_run = [r for r in all_religions if r.lower() in requested_religions]
@@ -264,30 +328,46 @@ class TopicsCreatorAgent:
                     all_topics.extend(result)
 
         # ------------------------------------------------------------------
-        # Theme 3 — ChillStories, one randomly selected lifestyle area
-        # Cache key uses pref_key (e.g. "any") so same user always hits the
-        # same doc regardless of which area is randomly picked each run.
+        # Theme 3 — ChillStories, one slot per requested preference.
+        # Each slot gets a different randomly-assigned lifestyle area so stories
+        # are vibrant and varied across preferences.
         # ------------------------------------------------------------------
         if run_theme3:
             lifestyle_areas = (
                 ChillStoriesTopics().topics.get("meta", {}).get("lifestyle_areas", [])
             )
-            if lifestyle_areas:
-                area = random.choice(lifestyle_areas)
-                logger.info(f"[TopicsCreator] theme3 area={area} cache_key={pref_key}")
-                t3 = await self._generate_one(
+
+            prefs_to_run: list[str]  # normalised pref keys
+            if isinstance(preferences, list) and preferences:
+                prefs_to_run = [p.lower().strip() for p in preferences if p.lower().strip() not in {"any", ""}]
+            else:
+                prefs_to_run = []
+
+            if not prefs_to_run:
+                prefs_to_run = ["any"]
+
+            # Shuffle lifestyle areas so slot 0 and slot 1 always get different areas.
+            # Shuffling once per request is enough — order is stable within this run.
+            shuffled_areas = list(lifestyle_areas)
+            random.shuffle(shuffled_areas)
+
+            for slot_idx, pref in enumerate(prefs_to_run):
+                area = shuffled_areas[slot_idx % len(shuffled_areas)] if shuffled_areas else ""
+                result = await self._generate_one(
                     theme_name   = "theme3",
                     version      = version,
                     filter_type  = "preference",
-                    filter_value = pref_key,       # e.g. "any" — stable cache key
+                    filter_value = pref,
                     prompt_kwargs= {
                         "age":        age,
                         "length":     n,
                         "promptText": _chill_prompt_text(area, age, n),
+                        "preference": pref,
                     },
                     age=age, lang=lang_code, registry=registry,
                 )
-                all_topics.extend(t3)
+                if isinstance(result, list):
+                    all_topics.extend(result)
 
         logger.info(f"[TopicsCreator] Total topics collected: {len(all_topics)}")
 
@@ -320,31 +400,29 @@ class TopicsCreatorAgent:
         """
         Returns titles for one (theme, filter_value) slot.
         Reads from Firestore cache; calls LLM only on cache miss.
+        On LLM call, fetches ALL existing titles across all themes/slots for this
+        age+lang from Firestore and passes them to the prompt to prevent global duplicates.
         """
         # 1. Cache check
         n = settings.TOPICS_PER_THEME
         cached = await self.db.get_title_library_entry(theme_name, age, lang, filter_value)
+        if cached and len(cached) >= n:
+            logger.info(f"[TopicsCreator] Cache hit: {theme_name}/{filter_value} ({len(cached)} topics)")
+            return cached[:n]
         if cached:
-            if len(cached) >= n:
-                logger.info(f"[TopicsCreator] Cache hit: {theme_name}/{filter_value} ({len(cached)} topics)")
-                return cached
-            # Cache exists but has fewer than requested — generate the remaining ones below
             logger.info(
                 f"[TopicsCreator] Partial cache hit: {theme_name}/{filter_value} "
                 f"({len(cached)}/{n}) — generating {n - len(cached)} more"
             )
 
-        # 2. Inject duplicate-prevention context when we have partial cache
+        # 2. Fetch all existing titles globally (across all themes/slots) for dedup
         need = n - len(cached) if cached else n
-        if cached:
-            existing_titles_str = ", ".join(t["title"] for t in cached)
-            prompt_kwargs = {
-                **prompt_kwargs,
-                "length":          need,
-                "existing_titles": existing_titles_str,
-            }
-        else:
-            prompt_kwargs = {**prompt_kwargs, "existing_titles": ""}
+        all_existing_titles = await self.db.get_all_topic_titles(age, lang)
+        prompt_kwargs = {
+            **prompt_kwargs,
+            "length":          need,
+            "existing_titles": ", ".join(sorted(all_existing_titles)) if all_existing_titles else "",
+        }
 
         # 3. Load prompt (skip silently if file not written yet)
         try:

@@ -6,9 +6,10 @@ Generate exactly {length} titles with descriptions from this list:
 Rules:
 Source : Derive the titles from real life situations or charecters. exmaple: Family, friends, Pets, teachers, Farmers, School, Office, etc.
 Title : Must convey a moral or science with max of 5 words.
-Description : max 10 words, hints at the story without spoiling it. 
+Description : max 10 words, hints at the story without spoiling it.
 Language : Must be easy to understand for {age}-year-old kids.
 Preference : the whole title should articulate in the preference of {preference}
+Do NOT repeat or closely resemble any of these already-used titles: {existing_titles}
 
 
 Output format — return ONLY this, no extra text:

@@ -8,6 +8,7 @@ Source : Derive each title and description from real incidents or situations fro
 Title : Must convey a moral or science with max of 5 words.
 Description : max 10 words, hints at the story without spoiling it.
 Language : Must be easy to understand for {age}-year-old kids.
+Do NOT repeat or closely resemble any of these already-used titles: {existing_titles}
 
 
 Output format — return ONLY this, no extra text:
