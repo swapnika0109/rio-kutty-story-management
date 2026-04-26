@@ -327,23 +327,56 @@ class FirestoreService:
                 doc_theme        = data.get("theme", theme)
                 import uuid as _uuid
                 # Re-inject doc-level fields so the in-memory topic list is complete.
-                # Back-fill topic_id for legacy docs that predate this field.
-                enriched = [
-                    {
-                        "topic_id":     t.get("topic_id") or str(_uuid.uuid4()),
+                # Back-fill topic_id for legacy docs that predate this field and persist
+                # it immediately so the same UUID is returned on every subsequent read.
+                needs_backfill = False
+                enriched = []
+                for t in topics:
+                    if not t.get("topic_id"):
+                        t = {**t, "topic_id": str(_uuid.uuid4())}
+                        needs_backfill = True
+                    enriched.append({
                         **t,
                         "theme":        doc_theme,
                         "filter_type":  doc_filter_type,
                         "filter_value": doc_filter_value,
-                    }
-                    for t in topics
-                ]
+                    })
+
+                if needs_backfill:
+                    # Write back only the topics array so topic_ids are stable forever.
+                    clean = [{k: v for k, v in t.items() if k not in {"theme", "filter_type", "filter_value"}} for t in enriched]
+                    self.db.collection(col).document(doc_id).update({"topics": clean})
+                    logger.info(f"[Firestore] Back-filled topic_ids in {col}/{doc_id}")
+
                 logger.info(f"[Firestore] Cache hit: {col}/{doc_id} ({len(enriched)} topics)")
                 return enriched
             return None
         except Exception as e:
             logger.error(f"get_title_library_entry failed: {e}")
             return None
+
+    async def get_all_topic_titles(self, age: str, lang: str) -> set[str]:
+        """
+        Returns a set of all topic titles already stored across all theme collections
+        for the given age + language. Used globally to prevent duplicate titles.
+        """
+        titles: set[str] = set()
+        try:
+            doc_id_prefix = self._library_doc_id(age, lang, "").rstrip("_")
+            for col in _TOPIC_COLLECTIONS.values():
+                docs = self.db.collection(col).list_documents()
+                for doc_ref in docs:
+                    doc_id = doc_ref.id
+                    if not doc_id.startswith(doc_id_prefix):
+                        continue
+                    doc = doc_ref.get()
+                    if doc.exists:
+                        for t in doc.to_dict().get("topics", []):
+                            if t.get("title"):
+                                titles.add(t["title"].lower())
+        except Exception as e:
+            logger.error(f"get_all_topic_titles failed: {e}")
+        return titles
 
     async def save_title_library_entry(
         self,
@@ -370,19 +403,19 @@ class FirestoreService:
             doc_id = self._library_doc_id(age, lang, filter_value)
             doc_ref = self.db.collection(col).document(doc_id)
 
-            # Preserve story_id values that were previously patched in by update_title_story_id.
-            # Without this, a re-save would wipe them and WF2 would re-run for existing stories.
+            # Preserve topic_id and story_id from existing docs so IDs are stable across re-saves.
             existing_doc = doc_ref.get()
             if existing_doc.exists:
                 existing_by_title = {
-                    t.get("title"): t.get("story_id")
+                    t.get("title"): t
                     for t in existing_doc.to_dict().get("topics", [])
-                    if t.get("story_id")
                 }
                 for t in clean_topics:
-                    sid = existing_by_title.get(t.get("title"))
-                    if sid:
-                        t["story_id"] = sid
+                    existing = existing_by_title.get(t.get("title"), {})
+                    if existing.get("topic_id"):
+                        t["topic_id"] = existing["topic_id"]
+                    if existing.get("story_id"):
+                        t["story_id"] = existing["story_id"]
 
             doc_ref.set({
                 "topics_id":    topics_id or str(_uuid.uuid4()),

@@ -7,8 +7,10 @@ Rules:
 - Title: max 5 words, uses a character or nature element
 - Description: max 10 words, hints at the story without spoiling it
 - Language: simple words a {age}-year-old understands
+- Preference: the tone and theme of each title must reflect the preference of "{preference}"
+- Do NOT repeat or closely resemble any of these already-used titles: {existing_titles}
 
-Example output for age 4, gender girl:
+Example output for age 4:
 Lily Finds a Cloud|She touches the sky and learns to let go
 The Brave Little Seed|One small seed changes an entire garden
 

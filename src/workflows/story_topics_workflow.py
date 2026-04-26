@@ -283,8 +283,9 @@ async def batch_create_stories_node(state: StoryTopicsState, config: RunnableCon
 
             # ----------------------------------------------------------------
             # Fresh run: no story yet — full WF2 → Master pipeline
+            # Use topic_id as story_id so the story doc ID matches the topic.
             # ----------------------------------------------------------------
-            story_id = str(uuid.uuid4())
+            story_id = topic.get("topic_id") or str(uuid.uuid4())
 
             # --- WF2: Story Creator ---
             wf2_config = {

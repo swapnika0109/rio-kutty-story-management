@@ -70,7 +70,16 @@ class FirestoreCheckpointer(BaseCheckpointSaver):
     def client(self) -> firestore.AsyncClient:
         """Lazy initialization of Firestore client."""
         if self._client is None:
-            self._client = firestore.AsyncClient(project=settings.GOOGLE_CLOUD_PROJECT)
+            project  = settings.GOOGLE_CLOUD_PROJECT
+            database = settings.FIRESTORE_DATABASE
+            if settings.GOOGLE_APPLICATION_CREDENTIALS:
+                self._client = firestore.AsyncClient.from_service_account_json(
+                    settings.GOOGLE_APPLICATION_CREDENTIALS,
+                    project=project,
+                    database=database,
+                )
+            else:
+                self._client = firestore.AsyncClient(project=project, database=database)
         return self._client
     
     def _get_collection(self):
