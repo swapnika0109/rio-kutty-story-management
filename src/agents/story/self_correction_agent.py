@@ -88,14 +88,27 @@ class SelfCorrectionAgent:
     def _build_correction_prompt(self, content, issues: str, content_key: str) -> str:
         """Build the self-correction prompt."""
         content_str = json.dumps(content, ensure_ascii=False, indent=2) if not isinstance(content, str) else content
+
+        format_hint = ""
+        if content_key == "topics":
+            format_hint = (
+                "\n\nOUTPUT FORMAT — return ONLY pipe-separated lines, one topic per line, no extra text:\n"
+                "title1|description1\n"
+                "title2|description2\n\n"
+                "Requirements for each corrected topic:\n"
+                "- Title: max 6 words, MUST feature a named character or vivid image (NOT a theme name)\n"
+                "- Description: 12–20 words, contains an action verb and hints at a feeling or lesson\n"
+                "- Each title must cover a different situation or character (diverse, not repetitive)\n"
+                "- Do NOT reuse the original title verbatim — rewrite it so a child wants to hear the story\n"
+            )
+
         return (
             f"You are a content quality editor for children's educational stories.\n\n"
             f"The following {content_key} was evaluated and found to have these issues:\n"
             f"{issues}\n\n"
             f"Original content:\n{content_str}\n\n"
-            f"Please provide an improved version that fixes the identified issues. "
-            f"Return ONLY the corrected content in the same format as the original "
-            f"(JSON if the original was JSON, plain text if it was plain text). "
+            f"Please provide an improved version that fixes ALL identified issues."
+            f"{format_hint}"
             f"Do not add any explanation or preamble."
         )
 

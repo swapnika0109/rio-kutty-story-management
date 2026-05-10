@@ -265,10 +265,7 @@ class AIService:
         try:
             logger.info(f"Generating image for: {prompt[:30]}...")
             await self.rate_limiter.acquire()
-            client = InferenceClient(
-                provider="together",
-                api_key=settings.HF_TOKEN,
-            )
+            client = InferenceClient(api_key=settings.HF_TOKEN)
 
             # output is a PIL.Image object
             # Model from config: defaults to FLUX.1-schnell (10x cheaper, same quality for children's art)

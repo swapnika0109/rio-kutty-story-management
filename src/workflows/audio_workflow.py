@@ -52,6 +52,17 @@ def _unpack_config(state: AudioWorkflowState, config: RunnableConfig) -> dict:
 
 # --- Nodes ---
 
+async def check_existing_audio_node(state: AudioWorkflowState, config: RunnableConfig) -> dict:
+    """Skip generation if an audio_url is already present in the initial state
+    (set by the caller from a prior successful run). Avoids re-synthesizing TTS
+    and re-uploading audio we already have."""
+    existing_url = state.get("audio_url")
+    if existing_url:
+        logger.info(f"[WF4] Skipping — audio_url already present: {existing_url}")
+        return {"status": "completed", "completed": ["audio"]}
+    return {}
+
+
 async def generate_audio_node(state: AudioWorkflowState, config: RunnableConfig) -> dict:
     enriched = _unpack_config(state, config)
     result = await audio_agent.generate(enriched)
@@ -116,6 +127,13 @@ async def save_audio_node(state: AudioWorkflowState, config: RunnableConfig) -> 
 
 # --- Routing ---
 
+def route_after_check_existing(state: AudioWorkflowState) -> Literal["generate_audio", "__end__"]:
+    """If the entry gate marked us complete, skip straight to END."""
+    if state.get("status") == "completed":
+        return END
+    return "generate_audio"
+
+
 def route_after_validate(state: AudioWorkflowState) -> Literal["evaluate_audio", "generate_audio", "__end__"]:
     if state.get("validated"):
         return "evaluate_audio"
@@ -150,13 +168,19 @@ async def mark_needs_human_node(state: AudioWorkflowState, config: RunnableConfi
 
 workflow = StateGraph(AudioWorkflowState)
 
+workflow.add_node("check_existing_audio", check_existing_audio_node)
 workflow.add_node("generate_audio", generate_audio_node)
 workflow.add_node("validate_audio", validate_audio_node)
 workflow.add_node("evaluate_audio", evaluate_audio_node)
 workflow.add_node("save_audio", save_audio_node)
 workflow.add_node("mark_needs_human", mark_needs_human_node)
 
-workflow.set_entry_point("generate_audio")
+workflow.set_entry_point("check_existing_audio")
+workflow.add_conditional_edges(
+    "check_existing_audio",
+    route_after_check_existing,
+    {"generate_audio": "generate_audio", END: END},
+)
 workflow.add_edge("generate_audio", "validate_audio")
 workflow.add_conditional_edges(
     "validate_audio",

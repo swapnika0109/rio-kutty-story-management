@@ -217,9 +217,13 @@ async def dispatch_media_node(state: MasterWorkflowState, config: RunnableConfig
     wf3_config = _build_media_config(story_id, "wf3", story, age, language, theme)
     wf4_config = _build_media_config(story_id, "wf4", story, age, language, theme)
 
+    # Forward any existing image_url/audio_url from the story doc so the subgraph
+    # entry gates can short-circuit (skip regeneration) when this story is being
+    # resumed after a partial failure.
     wf3_initial = {
         "story_text":  story.get("story_text", ""),
         "story_title": story.get("title", ""),
+        "image_url":   story.get("image_url"),
         "retry_count": 0,
         "status":      "pending",
         "completed":   [],
@@ -229,6 +233,7 @@ async def dispatch_media_node(state: MasterWorkflowState, config: RunnableConfig
         "story_text":  story.get("story_text", ""),
         "language":    language,
         "voice":       voice,
+        "audio_url":   story.get("audio_url"),
         "retry_count": 0,
         "status":      "pending",
         "completed":   [],

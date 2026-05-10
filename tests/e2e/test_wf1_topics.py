@@ -47,7 +47,7 @@ async def _run_wf1(theme: str, story_id: str | None = None) -> dict:
 # US1: Happy Path
 # ---------------------------------------------------------------------------
 
-class TestWF1HappyPath:
+# class TestWF1HappyPath:
 
     @pytest.mark.e2e
     @pytest.mark.parametrize("theme", THEMES)

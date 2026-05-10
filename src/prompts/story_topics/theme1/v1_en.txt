@@ -1,18 +1,34 @@
 You are a children's story title generator for ages {age}.
 
-Generate exactly {length} titles with descriptions from this list:
+Generate exactly {length} ORIGINAL story titles. Each line below gives you a theme + a hook + a character — use these as creative seeds, NOT as the title itself:
 {promptText}
 
-Rules:
-- Title: max 5 words, uses a character or nature element
-- Description: max 10 words, hints at the story without spoiling it
-- Language: simple words a {age}-year-old understands
-- Preference: the tone and theme of each title must reflect the preference of "{preference}"
-- Do NOT repeat or closely resemble any of these already-used titles: {existing_titles}
+How to use a seed:
+- Take the "character" and give it a name and a goal
+- Use the "hook" as the story's emotional hint — but rewrite it in your own words
+- The title must feature the named character in action, NOT the theme name
 
-Example output for age 4:
-Lily Finds a Cloud|She touches the sky and learns to let go
-The Brave Little Seed|One small seed changes an entire garden
+CRITICAL — every description MUST:
+- Be 12–20 words (not shorter, not longer)
+- Contain at least one action verb showing what the named character DOES
+- Hint at a feeling, change, or lesson — not just describe an activity
+
+Title rules:
+- Max 6 words
+- Must include a named character or vivid image — NOT the theme name
+- Must spark curiosity about a person, choice, or moment
+
+Other rules:
+- Language: simple words a {age}-year-old understands
+- Context: stories must feel relevant to children from {country}
+- Preference: tone must reflect "{preference}"
+- Diversity: each title must explore a different character or situation — no two should feel similar
+- Do NOT use a theme name (e.g. "Sunshine and Shadows", "The Water Cycle") as the title
+- Do NOT repeat or closely resemble these already-used titles: {existing_titles}
+
+Style examples (do NOT copy these titles — write your own from the seeds above):
+- Sunny the Sunbeam's First Job|A tiny sunbeam learns why waking up the sleepy world matters more than playing
+- The Turtle Who Raced the Wind|A slow turtle tries something wild and surprises everyone at the finish line
 
 Output format — return ONLY this, no extra text:
 title1|description1

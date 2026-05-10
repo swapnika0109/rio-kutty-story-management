@@ -75,11 +75,21 @@ def _pp_subjects(age: str) -> list[str]:
     return subjects
 
 
+def _format_pp_topic(t: dict) -> str:
+    """Render a PP topic as a multi-field hint so the LLM has a character + angle to write from."""
+    parts = [f"theme: {t.get('name', '?')}"]
+    if t.get("tagline"):
+        parts.append(f"hook: {t['tagline']}")
+    if t.get("character_type"):
+        parts.append(f"character: {t['character_type']}")
+    return " | ".join(parts)
+
+
 def _pp_prompt_text(age: str, n: int, slot_index: int = 0) -> str:
     """
-    Age-filtered PlanetProtector topic names for a specific subject slot.
-    slot_index cycles through available subjects so each preference slot
-    draws from a different subject category, keeping stories vibrant.
+    Age-filtered PlanetProtector topic hints for a specific subject slot.
+    Each topic is rendered as 'theme | hook | character' so the LLM has
+    enough material to write a vivid title rather than copying the topic name.
     """
     age_min, age_max = _parse_age_range(age)
     topics = PlanetProtector().topics.get("topics", [])
@@ -95,9 +105,9 @@ def _pp_prompt_text(age: str, n: int, slot_index: int = 0) -> str:
         subject_topics = [t for t in filtered if t.get("subject") == subject]
         if subject_topics:
             random.shuffle(subject_topics)
-            return ", ".join(t["name"] for t in subject_topics[:max(n * 3, 10)])
+            return "\n".join(_format_pp_topic(t) for t in subject_topics[:max(n * 3, 10)])
     random.shuffle(filtered)
-    return ", ".join(t["name"] for t in filtered[:max(n * 3, 10)])
+    return "\n".join(_format_pp_topic(t) for t in filtered[:max(n * 3, 10)])
 
 
 def _mindful_prompt_text(religion_key: str, n: int) -> str:
@@ -226,6 +236,10 @@ class TopicsCreatorAgent:
         requested = theme.lower().strip() if theme else ""
         if requested and not requested.startswith("theme"):
             requested = f"theme{requested}"
+
+        _VALID_THEMES = {"theme1", "theme2", "theme3"}
+        if requested and requested not in _VALID_THEMES:
+            raise ValueError(f"Unknown theme '{theme}'. Valid themes: {sorted(_VALID_THEMES)}")
 
         run_theme1 = not requested or requested == "theme1"
         run_theme2 = not requested or requested == "theme2"
@@ -474,6 +488,8 @@ class TopicsCreatorAgent:
             titles = new_titles
 
         # 7. Save to cache (non-fatal if it fails)
+        # Persist all generated titles so future runs with larger n can reuse them,
+        # but only return the first n to the workflow (LLM often over-produces).
         if titles:
             try:
                 await self.db.save_title_library_entry(
@@ -482,4 +498,4 @@ class TopicsCreatorAgent:
             except Exception as e:
                 logger.warning(f"[TopicsCreator] Cache save failed for {theme_name}/{filter_value}: {e}")
 
-        return titles
+        return titles[:n]

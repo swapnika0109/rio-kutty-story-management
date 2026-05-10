@@ -73,18 +73,20 @@ async def validate_story_node(state: StoryCreatorState, config: RunnableConfig) 
     story = state.get("story")
     required = {"title", "story_text", "moral", "age_group", "language"}
 
+    attempts = state.get("correction_attempts", 0)
+
     if not story or not isinstance(story, dict):
         logger.warning("[WF2] Structural validation failed: story is missing or not a dict")
-        return {"validated": False}
+        return {"validated": False, "correction_attempts": attempts + 1}
 
     if not required.issubset(story.keys()):
         missing = required - story.keys()
         logger.warning(f"[WF2] Structural validation failed: missing fields {missing}")
-        return {"validated": False}
+        return {"validated": False, "correction_attempts": attempts + 1}
 
     if not story.get("story_text", "").strip():
         logger.warning("[WF2] Structural validation failed: story_text is empty")
-        return {"validated": False}
+        return {"validated": False, "correction_attempts": attempts + 1}
 
     logger.info(f"[WF2] Structural validation passed: '{story.get('title')}'")
     return {"validated": True}
@@ -130,9 +132,12 @@ async def save_story_node(state: StoryCreatorState, config: RunnableConfig) -> d
 
 # --- Routing ---
 
-def route_after_validate(state: StoryCreatorState) -> Literal["evaluate_story", "generate_story"]:
+def route_after_validate(state: StoryCreatorState) -> Literal["evaluate_story", "generate_story", "__end__"]:
     if state.get("validated"):
         return "evaluate_story"
+    if state.get("correction_attempts", 0) >= MAX_CORRECTION_ATTEMPTS:
+        logger.error("[WF2] Max structural validation attempts reached — workflow failed")
+        return END
     return "generate_story"
 
 

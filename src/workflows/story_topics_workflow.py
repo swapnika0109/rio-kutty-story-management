@@ -91,11 +91,11 @@ async def validate_topics_node(state: StoryTopicsState, config: RunnableConfig) 
 
     if not topics or not isinstance(topics, list) or len(topics) == 0:
         logger.warning("[WF1] Structural validation failed: empty or missing topics list")
-        return {"validated": False}
+        return {"validated": False, "correction_attempts": state.get("correction_attempts", 0) + 1}
 
     if not all(required.issubset(t.keys()) for t in topics):
         logger.warning("[WF1] Structural validation failed: missing required fields in topics")
-        return {"validated": False}
+        return {"validated": False, "correction_attempts": state.get("correction_attempts", 0) + 1}
 
     logger.info(f"[WF1] Structural validation passed: {len(topics)} topics")
     return {"validated": True}
@@ -392,6 +392,11 @@ def route_after_validate(state: StoryTopicsState) -> Literal["evaluate_topics", 
     """After structural validation: proceed to eval if valid, else regenerate."""
     if state.get("validated"):
         return "evaluate_topics"
+    
+    attempts = state.get("correction_attempts", 0)
+    if attempts >= MAX_CORRECTION_ATTEMPTS:
+        logger.error("[WF1] Max structural validation attempts reached — workflow failed")
+        return END
     return "generate_topics"
 
 

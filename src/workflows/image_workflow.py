@@ -58,6 +58,17 @@ def _unpack_config(state: ImageWorkflowState, config: RunnableConfig) -> dict:
 
 # --- Nodes ---
 
+async def check_existing_image_node(state: ImageWorkflowState, config: RunnableConfig) -> dict:
+    """Skip generation if an image_url is already present in the initial state
+    (set by the caller from a prior successful run). Avoids re-uploading and
+    re-paying for an image we already have."""
+    existing_url = state.get("image_url")
+    if existing_url:
+        logger.info(f"[WF3] Skipping — image_url already present: {existing_url}")
+        return {"status": "completed", "completed": ["image"]}
+    return {}
+
+
 async def generate_image_node(state: ImageWorkflowState, config: RunnableConfig) -> dict:
     enriched = _unpack_config(state, config)
     result = await image_agent.generate(enriched)
@@ -117,6 +128,13 @@ async def save_image_node(state: ImageWorkflowState, config: RunnableConfig) -> 
 
 # --- Routing ---
 
+def route_after_check_existing(state: ImageWorkflowState) -> Literal["generate_image", "__end__"]:
+    """If the entry gate marked us complete, skip straight to END."""
+    if state.get("status") == "completed":
+        return END
+    return "generate_image"
+
+
 def route_after_validate(state: ImageWorkflowState) -> Literal["save_image", "generate_image", "__end__"]:
     if state.get("errors"):
         if state.get("retry_count", 0) >= MAX_RETRIES:
@@ -155,13 +173,19 @@ async def mark_needs_human_node(state: ImageWorkflowState, config: RunnableConfi
 
 workflow = StateGraph(ImageWorkflowState)
 
+workflow.add_node("check_existing_image", check_existing_image_node)
 workflow.add_node("generate_image", generate_image_node)
 workflow.add_node("validate_image", validate_image_node)
 # workflow.add_node("evaluate_image", evaluate_image_node)  # evaluation disabled
 workflow.add_node("save_image", save_image_node)
 workflow.add_node("mark_needs_human", mark_needs_human_node)
 
-workflow.set_entry_point("generate_image")
+workflow.set_entry_point("check_existing_image")
+workflow.add_conditional_edges(
+    "check_existing_image",
+    route_after_check_existing,
+    {"generate_image": "generate_image", END: END},
+)
 workflow.add_edge("generate_image", "validate_image")
 workflow.add_conditional_edges(
     "validate_image",
