@@ -65,10 +65,26 @@ class FirestoreCheckpointer(BaseCheckpointSaver):
         self.collection_name = collection_name
         self.ttl_days = ttl_days
         self._client: Optional[firestore.AsyncClient] = None
-    
+        self._client_loop = None  # event loop the client was created on
+
     @property
     def client(self) -> firestore.AsyncClient:
-        """Lazy initialization of Firestore client."""
+        """Lazy initialization of Firestore client. Recreates if the bound event loop is closed
+        or if the current running loop differs from the one the client was created on (each
+        pytest-asyncio test runs on its own loop, so the cached client must be rebuilt)."""
+        import asyncio
+        try:
+            current_loop = asyncio.get_running_loop()
+        except RuntimeError:
+            current_loop = None
+
+        if self._client is not None and self._client_loop is not None:
+            if self._client_loop.is_closed() or (
+                current_loop is not None and current_loop is not self._client_loop
+            ):
+                self._client = None
+                self._client_loop = None
+
         if self._client is None:
             project  = settings.GOOGLE_CLOUD_PROJECT
             database = settings.FIRESTORE_DATABASE
@@ -80,6 +96,7 @@ class FirestoreCheckpointer(BaseCheckpointSaver):
                 )
             else:
                 self._client = firestore.AsyncClient(project=project, database=database)
+            self._client_loop = current_loop
         return self._client
     
     def _get_collection(self):

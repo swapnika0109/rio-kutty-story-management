@@ -14,3 +14,6 @@ src/services/database/__pycache__
 .vscode
 .env
 service-account.json
+# E2E test artifacts
+test/images/
+test/audio/

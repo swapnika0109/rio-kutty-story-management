@@ -1,7 +1,9 @@
 from ...services.ai_service import AIService
+from ...services.database.storage_bucket import StorageBucketService
 from ...utils.logger import setup_logger
 from ...prompts import get_registry
 import json
+import uuid
 
 logger = setup_logger(__name__)
 
@@ -9,6 +11,7 @@ class ScienceAgent:
 
     def __init__(self, prompt_version: str = "latest"):
         self.ai_service = AIService()
+        self.storage = StorageBucketService()
         self.prompt_version = prompt_version
     
     async def generate(self, state: dict):
@@ -52,8 +55,15 @@ class ScienceAgent:
                 cleaned_text = response.replace("```json", "").replace("```", "").strip()
 
             science_data = json.loads(cleaned_text)
-            image = await self.ai_service.generate_image(science_data[0].get("image_generation_prompt", ""))
-            science_data[0]["image"] = image
+            # Generate image and upload immediately to GCS so PNG bytes never
+            # enter LangGraph state (Firestore checkpoints cap at 1 MB).
+            image_bytes = await self.ai_service.generate_image(science_data[0].get("image_generation_prompt", ""))
+            if image_bytes:
+                filename = f"images/{uuid.uuid4()}.png"
+                await self.storage.upload_file(filename, image_bytes, content_type="image/png")
+                science_data[0]["image"] = filename
+            else:
+                science_data[0]["image"] = None
             return {
                 "activity_type": "science",
                 "activities": {**state.get("activities", {}), "science": science_data},

@@ -1,5 +1,7 @@
 import json
+import uuid
 from ...services.ai_service import AIService
+from ...services.database.storage_bucket import StorageBucketService
 from ...utils.logger import setup_logger
 from ...prompts import get_registry
 
@@ -8,7 +10,18 @@ logger = setup_logger(__name__)
 class MoralAgent:
     def __init__(self, prompt_version: str = "latest"):
         self.ai_service = AIService()
+        self.storage = StorageBucketService()
         self.prompt_version = prompt_version
+
+    async def _gen_and_upload(self, prompt_text: str) -> str | None:
+        """Generate an image and upload it to GCS. Returns the GCS filename
+        (or None on failure) so raw PNG bytes never enter LangGraph state."""
+        image_bytes = await self.ai_service.generate_image(prompt_text)
+        if not image_bytes:
+            return None
+        filename = f"images/{uuid.uuid4()}.png"
+        await self.storage.upload_file(filename, image_bytes, content_type="image/png")
+        return filename
 
     async def generate(self, state: dict):
         logger.info("Starting Moral activity generation...")
@@ -40,14 +53,19 @@ class MoralAgent:
                 cleaned_text = response.replace("```json", "").replace("```", "").strip()
 
             activity_data = json.loads(cleaned_text)
+            # Generate images and upload immediately so PNG bytes never enter
+            # LangGraph state (Firestore checkpoints cap at 1 MB).
             if len(activity_data) >= 2:
-                image1 = await self.ai_service.generate_image(activity_data[0].get("image_generation_prompt", ""))
-                activity_data[0]["image"] = image1
-                image2 = await self.ai_service.generate_image(activity_data[1].get("image_generation_prompt", ""))
-                activity_data[1]["image"] = image2
+                activity_data[0]["image"] = await self._gen_and_upload(
+                    activity_data[0].get("image_generation_prompt", "")
+                )
+                activity_data[1]["image"] = await self._gen_and_upload(
+                    activity_data[1].get("image_generation_prompt", "")
+                )
             else:
-                image = await self.ai_service.generate_image(activity_data[0].get("image_generation_prompt", ""))
-                activity_data[0]["image"] = image
+                activity_data[0]["image"] = await self._gen_and_upload(
+                    activity_data[0].get("image_generation_prompt", "")
+                )
 
             
             # If images were generated, attach them

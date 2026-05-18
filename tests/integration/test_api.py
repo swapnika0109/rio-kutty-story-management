@@ -13,8 +13,8 @@ class TestAPIEndpoints:
     @pytest.fixture
     def client(self):
         """Create test client with mocked dependencies."""
-        with patch("src.main.FirestoreService") as MockFirestore, \
-             patch("src.main.app_workflow") as MockWorkflow:
+        with patch("src.api.activities.FirestoreService") as MockFirestore, \
+             patch("src.api.activities.app_workflow") as MockWorkflow:
             
             # Mock Firestore
             firestore = MockFirestore.return_value
@@ -41,8 +41,8 @@ class TestAPIEndpoints:
         response = client.post(
             "/generate-activities",
             json={
-                "story_id": "test_story_123",
-                "age": 5,
+                "story_id": "456y5i64u8thfbcsyr834drft9H",
+                "age": "5",
                 "language": "en"
             }
         )
@@ -50,14 +50,14 @@ class TestAPIEndpoints:
         assert response.status_code == 200  # FastAPI default for BackgroundTasks
         data = response.json()
         assert data["status"] == "accepted"
-        assert data["story_id"] == "test_story_123"
+        assert data["story_id"] == "456y5i64u8thfbcsyr834drft9H"
     
     def test_generate_activities_validates_input(self, client):
         """Test that generate-activities validates required fields."""
         response = client.post(
             "/generate-activities",
             json={
-                "age": 5
+                "age": "5"
                 # Missing story_id
             }
         )
@@ -69,7 +69,7 @@ class TestAPIEndpoints:
         import base64
         import json
         
-        data = {"story_id": "test_123", "age": 5}
+        data = {"story_id": "test_123", "age": "5"}
         encoded = base64.b64encode(json.dumps(data).encode()).decode()
         
         response = client.post(
@@ -80,7 +80,7 @@ class TestAPIEndpoints:
             }
         )
         
-        assert response.status_code == 200
+        assert response.status_code == 202
     
     def test_pubsub_handler_returns_400_on_missing_data(self, client):
         """Test that pubsub handler returns 400 when data is missing."""

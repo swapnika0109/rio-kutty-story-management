@@ -46,7 +46,7 @@ Return ONLY one valid JSON object in this exact structure:
     }
   ],
 
-  "moral": "Kids, today from this story we have learned..."
+  "moral": "Kids, today from this story we have learned [specific insight tied to THIS story's events — not a generic line like 'courage helps us overcome fear']..."
 }
 
 STORY REQUIREMENTS (story field only):
@@ -71,9 +71,15 @@ Show through actions and dialogue — never state directly.
 Climax: One active sensory moment — discovery, puzzle
 solved or visible problem fixed. Never passive conversation.
 
-Science: Introduce one nature element through a character's
-words or actions. It must explain WHY or HOW something
-works — not just what it does. Never as standalone fact.
+Topic Faithfulness: Stay on the exact subject, conflict
+and required moral of {topic}. Never substitute a different
+fear, object or lesson.
+
+Science: BOTH science_concepts must be SHOWN in the story —
+a character observes, asks about, or demonstrates each one
+through an action. Not stated as narration, not only in the
+science_concepts field. If the concept is buoyancy, a
+character must float and notice why.
 
 Surprise: One unexpected moment the child will remember.
 

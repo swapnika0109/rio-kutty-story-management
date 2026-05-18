@@ -7,9 +7,9 @@ Enable with:
 
 Required env vars:
     GOOGLE_API_KEY
-    OPENAI_API_KEY (used by DeepEval GEval judge model)
 """
 
+import asyncio
 import json
 import os
 import pytest
@@ -20,12 +20,13 @@ from deepeval import assert_test
 from deepeval.metrics import GEval
 from deepeval.test_case import LLMTestCase, LLMTestCaseParams
 
+from src.agents.validators.evaluation_agent import _GEMINI_EVAL_MODEL
 from src.prompts import get_registry
 from src.services.ai_service import AIService
 
 
 RUN_DEEPEVAL = os.environ.get("RUN_DEEPEVAL", "false").lower() == "true"
-REQUIRED_ENV = ["GOOGLE_API_KEY", "OPENAI_API_KEY"]
+REQUIRED_ENV = ["GOOGLE_API_KEY"]
 MISSING_ENV = [key for key in REQUIRED_ENV if not os.environ.get(key)]
 
 if not RUN_DEEPEVAL:
@@ -54,6 +55,12 @@ def _extract_json_text(response: str) -> str:
     return cleaned
 
 
+@pytest.fixture(autouse=True)
+async def rate_limit_pause():
+    yield
+    await asyncio.sleep(5)
+
+
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
     "activity,format_note,prompt_kwargs",
@@ -80,12 +87,23 @@ def _extract_json_text(response: str) -> str:
         ),
     ],
 )
+async def _generate_with_retry(prompt: str, max_retries: int = 3) -> str:
+    ai_service = AIService()
+    for attempt in range(max_retries):
+        try:
+            return await ai_service.generate_content(prompt)
+        except Exception as e:
+            if "429" in str(e) and attempt < max_retries - 1:
+                await asyncio.sleep(10 * (attempt + 1))
+            else:
+                raise
+
+
 async def test_activity_llm_outputs_with_deepeval(activity: str, format_note: str, prompt_kwargs: dict):
     registry = get_registry()
     prompt = registry.get_prompt(activity, version="latest", **prompt_kwargs)
 
-    ai_service = AIService()
-    output = await ai_service.generate_content(prompt)
+    output = await _generate_with_retry(prompt)
 
     # Hard gate: ensure model output is parseable JSON
     json.loads(_extract_json_text(output))
@@ -110,6 +128,7 @@ async def test_activity_llm_outputs_with_deepeval(activity: str, format_note: st
             LLMTestCaseParams.ACTUAL_OUTPUT,
             LLMTestCaseParams.EXPECTED_OUTPUT,
         ],
+        model=_GEMINI_EVAL_MODEL,
         threshold=0.7,
     )
 

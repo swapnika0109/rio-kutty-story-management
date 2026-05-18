@@ -52,11 +52,15 @@ class FirestoreService:
 
     @staticmethod
     def _topic_collection(theme: str) -> str:
-        return _TOPIC_COLLECTIONS.get(theme, "planet_protectors_topics")
+        if theme not in _TOPIC_COLLECTIONS:
+            raise ValueError(f"Unknown theme '{theme}'. Valid themes: {list(_TOPIC_COLLECTIONS)}")
+        return _TOPIC_COLLECTIONS[theme]
 
     @staticmethod
     def _story_collection(theme: str) -> str:
-        return _STORY_COLLECTIONS.get(theme, "planet_protectors_stories")
+        if theme not in _STORY_COLLECTIONS:
+            raise ValueError(f"Unknown theme '{theme}'. Valid themes: {list(_STORY_COLLECTIONS)}")
+        return _STORY_COLLECTIONS[theme]
 
     # ------------------------------------------------------------------
     # Activities  (activities_v1 — unchanged)
@@ -211,11 +215,11 @@ class FirestoreService:
         """Updates image_url and image_prompt on the story doc."""
         try:
             col = self._story_collection(theme)
-            self.db.collection(col).document(story_id).update({
+            self.db.collection(col).document(story_id).set({
                 "image_url":    image_url,
                 "image_prompt": generation_prompt,
                 "updated_at":   firestore.SERVER_TIMESTAMP,
-            })
+            }, merge=True)
             logger.info(f"[Firestore] image_url saved on {col}/{story_id}")
         except Exception as e:
             logger.error(f"save_story_image failed: {e}")
@@ -240,7 +244,7 @@ class FirestoreService:
             }
             if audio_timepoints:
                 story_update["audio_timepoints"] = audio_timepoints
-            self.db.collection(col).document(story_id).update(story_update)
+            self.db.collection(col).document(story_id).set(story_update, merge=True)
             logger.info(f"[Firestore] audio_url saved on {col}/{story_id}")
         except Exception as e:
             logger.error(f"save_story_audio failed: {e}")

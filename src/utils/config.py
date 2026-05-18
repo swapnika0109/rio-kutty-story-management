@@ -1,6 +1,20 @@
 import os
 from functools import lru_cache
-from pydantic_settings import BaseSettings
+from pydantic_settings import BaseSettings, SettingsConfigDict
+
+
+def _strip_empty_env_vars() -> None:
+    """Pydantic prefers env vars over .env file values, even when the env var is
+    an empty string. That breaks runs invoked like `HF_TOKEN= pytest ...` where
+    the user meant to inherit from .env. Drop empty env vars so Pydantic falls
+    back to the .env file value."""
+    for key in ("HF_TOKEN", "GOOGLE_API_KEY", "GOOGLE_APPLICATION_CREDENTIALS"):
+        if key in os.environ and not os.environ[key].strip():
+            del os.environ[key]
+
+
+_strip_empty_env_vars()
+
 
 class Settings(BaseSettings):
      # App Settings
@@ -16,20 +30,27 @@ class Settings(BaseSettings):
     
     # Cost & CO2 Optimization: AI Models
     # Default to Flash for speed and lower cost/CO2
-    GEMINI_MODEL: str = "gemini-2.0-flash-lite"       # WF5 activities (existing)
-    GEMINI_FALLBACK_MODEL: str = "gemini-2.0-flash-lite"   # WF5 fallback
+    GEMINI_MODEL: str = "gemini-2.5-flash-lite"       # WF5 activities (existing)
+    GEMINI_FALLBACK_MODEL: str = "gemini-2.5-pro"   # WF5 fallback
     MULTIMODAL_MODEL: str = "gemini-2.5-flash-image"  # multimodal (existing)
 
     # WF1 — Story Topics (cheap model, topics are short/simple)
-    STORY_TOPICS_MODEL: str = "gemini-2.0-flash-lite"
-    STORY_TOPICS_FALLBACK_MODEL: str = "gemini-2.0-flash-lite"
+    STORY_TOPICS_MODEL: str = "gemini-2.5-flash-lite"
+    STORY_TOPICS_FALLBACK_MODEL: str = "gemini-2.5-pro"
 
     # WF2 — Story Creator (higher quality model for narrative generation)
     STORY_CREATOR_MODEL: str = "gemini-2.5-flash-lite"
-    STORY_CREATOR_FALLBACK_MODEL: str = "gemini-2.0-flash-lite"
+    STORY_CREATOR_FALLBACK_MODEL: str = "gemini-2.5-pro"
 
-    # Evaluation model — always cheap; GEval scoring is a simpler task
-    EVALUATION_MODEL: str = "gemini-2.0-flash-lite"
+    # Evaluation model — always cheap; GEval scoring is a simpler task.
+    # Per-workflow overrides below for workflows that fan out many concurrent
+    # metric calls and overload the flash-lite quota.
+    EVALUATION_MODEL: str = "gemini-2.5-flash-lite"
+
+    # WF5 activities run 7 metrics × 4 activities = up to 28 GEval calls per
+    # pipeline pass, each translating to 2-3 Gemini calls under the hood.
+    # flash-lite throttles at this volume — use higher-quota flash here.
+    ACTIVITIES_EVALUATION_MODEL: str = "gemini-2.5-flash"
 
     # WF3 — Image generation via HuggingFace InferenceClient
     # FLUX.1-schnell: 4 inference steps (vs 50 for dev), ~10x cheaper, Apache-2.0
@@ -79,9 +100,7 @@ class Settings(BaseSettings):
     MAX_CONCURRENCY: int = 10
     HF_TOKEN: str
 
-    class Config:
-        env_file = ".env"
-        extra = "ignore"
+    model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
 @lru_cache()
 def get_settings():

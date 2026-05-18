@@ -8,7 +8,9 @@ from ..utils.resilience import (
 )
 from google import genai
 from google.genai import types
+import asyncio
 import hashlib
+import time
 from functools import lru_cache
 import io
 from huggingface_hub import InferenceClient
@@ -19,6 +21,50 @@ from huggingface_hub import InferenceClient
 
 settings = get_settings()
 logger = setup_logger(__name__)
+
+
+# ---------------------------------------------------------------------------
+# Module-level FLUX request gate.
+#
+# Together AI's free-tier route (used via HuggingFace InferenceClient with
+# provider="together") limits FLUX image generation to 50 RPM = 0.83 QPS.
+# A single story pipeline fans out 5–6 image requests in parallel (WF3 cover
+# + WF5 art/moral×2/science), which trivially overshoots the per-minute window
+# and trips 429s. The per-instance RateLimiter on AIService can't help because
+# each agent instantiates its own AIService.
+#
+# This gate is process-wide: every generate_image() call across every agent
+# serialises through it with a ~1.5s minimum interval (~40 RPM with headroom).
+# ---------------------------------------------------------------------------
+# 5s = 12 RPM, well under whatever cap Together AI is actually enforcing on
+# this plan (the published 50 RPM appears to be enforced tighter — error
+# responses show "0 TPM", suggesting a restricted tier). Widen if 429s
+# disappear; tighten only if image throughput becomes the bottleneck.
+_FLUX_MIN_INTERVAL_SECONDS = 5.0
+_flux_gate_lock = asyncio.Lock()
+_flux_last_request_at: float = 0.0
+
+
+async def _flux_gate() -> None:
+    """Block until at least _FLUX_MIN_INTERVAL_SECONDS have passed since the
+    last FLUX request from any agent in this process."""
+    global _flux_last_request_at
+    async with _flux_gate_lock:
+        now = time.monotonic()
+        wait = _flux_last_request_at + _FLUX_MIN_INTERVAL_SECONDS - now
+        if wait > 0:
+            logger.debug(f"FLUX gate: waiting {wait:.2f}s to stay under rate cap")
+            await asyncio.sleep(wait)
+        _flux_last_request_at = time.monotonic()
+
+
+def _is_rate_limit_error(exc: Exception) -> bool:
+    """Detect Together AI / HuggingFace 429 rate-limit responses by message
+    inspection. InferenceClient surfaces these as a generic HTTPError, not a
+    typed exception, so we string-match the status code + key tokens."""
+    msg = str(exc)
+    return "429" in msg or "rate_limit" in msg.lower() or "too many requests" in msg.lower()
+
 
 class AIService:
     def __init__(self):
@@ -252,18 +298,29 @@ class AIService:
             raise e
 
     @circuit_breaker(name="flux_image", failure_threshold=3, recovery_timeout=120)
-    @retry_with_backoff(max_retries=2, base_delay=2.0)
+    @retry_with_backoff(max_retries=4, base_delay=30.0)
     async def generate_image(self, prompt: str, fallback_on_failure: bool = True):
         """
         Generates an image from a prompt using the Together API.
         Wrapped with circuit breaker and retry with exponential backoff.
-        
+
         Args:
             prompt: Image generation prompt
             fallback_on_failure: If True, return None instead of raising on failure
+
+        Notes on retry timing:
+        - Together AI's image endpoint rate-limits per-minute. A plain 2s/4s backoff
+          can't clear that window — retries need to span >=60s in total.
+        - max_retries=4 with base_delay=30.0 gives waits of roughly 30s, 60s, 120s, 240s,
+          which covers any plausible per-minute window without giving up too quickly.
+        - On 429 specifically we also push the module-wide gate forward so other
+          concurrent requests stop firing during the cooldown.
         """
         try:
             logger.info(f"Generating image for: {prompt[:30]}...")
+            # Process-wide FLUX gate first (cross-agent serialisation for the
+            # Together AI rate cap), then the per-instance rate limiter.
+            await _flux_gate()
             await self.rate_limiter.acquire()
             client = InferenceClient(
                 provider="together",
@@ -277,9 +334,9 @@ class AIService:
                 model=settings.FLUX_IMAGE_MODEL,
             )
             img_byte_arr = io.BytesIO()
-            image.save(img_byte_arr, format='PNG')   
+            image.save(img_byte_arr, format='PNG')
             img_byte_arr = img_byte_arr.getvalue()
-            return img_byte_arr 
+            return img_byte_arr
         except CircuitBreakerError:
             logger.error("FLUX circuit breaker is OPEN - image generation unavailable")
             if fallback_on_failure:
@@ -287,6 +344,18 @@ class AIService:
                 return None
             raise
         except Exception as e:
+            # On 429, push the global FLUX gate forward 60s so other concurrent
+            # image agents pause for the same cooldown, and re-raise so the
+            # @retry_with_backoff decorator can wait long enough for the
+            # per-minute window to clear. Suppressing 429 here (returning None
+            # under fallback_on_failure) would skip retries entirely.
+            if _is_rate_limit_error(e):
+                global _flux_last_request_at
+                _flux_last_request_at = time.monotonic() + 60.0
+                logger.warning(
+                    "FLUX rate-limited (429) — paused module gate 60s; re-raising for retry"
+                )
+                raise
             logger.error(f"Image Generation failed: {str(e)}")
             if fallback_on_failure:
                 logger.warning("Returning None as fallback for image generation")
