@@ -1,7 +1,7 @@
 from typing import TypedDict, List, Dict, Any, Annotated
 import operator
-import uuid
 import os
+import asyncio
 from langgraph.graph import StateGraph, END
 from langgraph.checkpoint.memory import MemorySaver
 from langchain_core.runnables import RunnableConfig
@@ -12,8 +12,8 @@ from ..agents.activities.art_agent import ArtAgent
 from ..agents.activities.moral_agent import MoralAgent
 from ..agents.activities.science_agent import ScienceAgent
 from ..agents.validators.validator_agent import ValidatorAgent
+from ..agents.validators.evaluation_agent import EvaluationAgent
 from ..services.database.firestore_service import FirestoreService
-from ..services.database.storage_bucket import StorageBucketService
 from ..services.database.checkpoint_service import FirestoreCheckpointer
 from ..utils.logger import setup_logger
 from ..utils.config import get_settings
@@ -41,8 +41,8 @@ art_agent = ArtAgent(prompt_version=settings.ART_PROMPT_VERSION)
 moral_agent = MoralAgent(prompt_version=settings.MORAL_PROMPT_VERSION)
 science_agent = ScienceAgent(prompt_version=settings.SCIENCE_PROMPT_VERSION)
 validator = ValidatorAgent()
+evaluator = EvaluationAgent(workflow_type="activities")
 firestore_service = FirestoreService()
-storage_bucket_service = StorageBucketService()
 
 
 def unpack_config(state: ActivityState, config: RunnableConfig):
@@ -97,8 +97,81 @@ def validate_art_node(state: ActivityState, config: RunnableConfig):
 def validate_science_node(state: ActivityState, config: RunnableConfig): 
     return validator.validate_science(unpack_config(state, config))
 
-def validate_moral_node(state: ActivityState, config: RunnableConfig): 
+def validate_moral_node(state: ActivityState, config: RunnableConfig):
     return validator.validate_moral(unpack_config(state, config))
+
+# --- Evaluation Nodes ---
+# Each evaluates one activity type. On failure we increment retry_count and re-run
+# the generator — same pattern as structural validation. The evaluator's per-activity
+# rubric (toxicity, safety, story-alignment, instructions, engagability, etc.) is
+# defined in EvaluationAgent.
+#
+# Activity generation runs in parallel (fan-out at `start`), so without coordination
+# all four activities reach their evaluate node at roughly the same time. That fans
+# out 4 × 7 = 28 GEval calls to the eval model in seconds and triggers Gemini 503
+# "high demand" responses. We serialise evaluation across activities with this lock
+# so only one activity evaluates at a time; the 7 metrics *within* an activity still
+# parallelise (capped by _eval_semaphore inside the evaluator). Gen+val stay parallel.
+#
+# Lazy-init so the lock binds to the running event loop on first use. Each
+# pytest-asyncio test gets its own loop; a module-level `asyncio.Lock()` created
+# at import time can end up bound to a now-defunct loop and silently no-op.
+_activity_eval_lock: asyncio.Lock | None = None
+
+
+def _get_activity_eval_lock() -> asyncio.Lock:
+    global _activity_eval_lock
+    try:
+        loop = asyncio.get_running_loop()
+    except RuntimeError:
+        loop = None
+    if _activity_eval_lock is None or getattr(_activity_eval_lock, "_loop", loop) is not loop:
+        _activity_eval_lock = asyncio.Lock()
+    return _activity_eval_lock
+
+
+async def _evaluate_activity(state: ActivityState, config: RunnableConfig, activity_type: str):
+    """Run the evaluator on one activity; on fail, bump that activity's retry counter
+    and set an evaluation_failed flag so the post-eval router can re-route to gen."""
+    enriched = {**unpack_config(state, config), "activity_type": activity_type}
+    # Serialise across activities so Gemini doesn't see a 28-call burst.
+    lock = _get_activity_eval_lock()
+    logger.info(f"[WF5/{activity_type}] Waiting for eval lock (queued={lock.locked()})")
+    async with lock:
+        logger.info(f"[WF5/{activity_type}] Acquired eval lock; starting evaluation")
+        result = await evaluator.evaluate(enriched)
+        logger.info(f"[WF5/{activity_type}] Released eval lock")
+    evaluation = (result or {}).get("evaluation") or {}
+    passed = evaluation.get("passed", False)
+    # Always write the eval result (passed bool + score + reason) keyed by
+    # `_eval_<type>` so the post-eval router can read the LATEST outcome.
+    # Using merge_dicts on `activities` means last-write-wins per key — a pass
+    # after a prior fail correctly overwrites the failure record.
+    eval_record = {"passed": passed, "score": evaluation.get("score"), "reason": evaluation.get("reason")}
+    if passed:
+        logger.info(f"[WF5/{activity_type}] Evaluation PASSED score={evaluation.get('score')}")
+        return {"activities": {f"_eval_{activity_type}": eval_record}}
+    logger.warning(
+        f"[WF5/{activity_type}] Evaluation FAILED score={evaluation.get('score')} "
+        f"reason={evaluation.get('reason')}"
+    )
+    current_retry = state.get("retry_count", {}).get(activity_type, 0)
+    return {
+        "retry_count": {**state.get("retry_count", {}), activity_type: current_retry + 1},
+        "activities": {f"_eval_{activity_type}": eval_record},
+    }
+
+async def evaluate_mcq_node(state: ActivityState, config: RunnableConfig):
+    return await _evaluate_activity(state, config, "mcq")
+
+async def evaluate_art_node(state: ActivityState, config: RunnableConfig):
+    return await _evaluate_activity(state, config, "art")
+
+async def evaluate_moral_node(state: ActivityState, config: RunnableConfig):
+    return await _evaluate_activity(state, config, "moral")
+
+async def evaluate_science_node(state: ActivityState, config: RunnableConfig):
+    return await _evaluate_activity(state, config, "science")
 
 # --- Save Nodes ---
 async def save_mcq_node(state: ActivityState, config: RunnableConfig):
@@ -110,71 +183,35 @@ async def save_mcq_node(state: ActivityState, config: RunnableConfig):
     return {}
 
 async def save_art_node(state: ActivityState, config: RunnableConfig):
+    # NOTE: image is already a GCS filename string by this point — the activity
+    # agents upload during generation so raw PNG bytes never live in state.
     db_data = unpack_config(state, config)
     if "art" in state.get("activities", {}):
         data = state["activities"]["art"]
-        filename = await save_art_image_node(data, config)
-        data["image"] = filename
         payload = {"items": data}
         await firestore_service.save_activity(db_data["story_id"], "art", payload)
     return {}
 
-async def save_art_image_node(data: dict, config: RunnableConfig):
-    if data.get("image", None):
-        file_uuid = str(uuid.uuid4())
-        filename = f"images/{file_uuid}.png"
-        await storage_bucket_service.upload_file(filename, data.get("image", None))
-        return filename
-    return None
 
 async def save_science_node(state: ActivityState, config: RunnableConfig):
     db_data = unpack_config(state, config)
-    if "science" in state.get("activities", {}) :
+    if "science" in state.get("activities", {}):
         data = state["activities"]["science"][0]
-        filename = await save_science_image_node(data, config)
-        data["image"] = filename
-        
-        # Prepare payload for Firestore
-        if isinstance(data, dict):
-            payload = {**data}
-        else:
-            payload = {"items": data}
-            
+        payload = {**data} if isinstance(data, dict) else {"items": data}
         await firestore_service.save_activity(db_data["story_id"], "science", payload)
     return {}
-async def save_science_image_node(data: dict, config: RunnableConfig):
-    if data.get("image", None):
-        file_uuid = str(uuid.uuid4())
-        filename = f"images/{file_uuid}.png"
-        await storage_bucket_service.upload_file(filename, data.get("image", None))
-        return filename
-    return None
+
 
 async def save_moral_node(state: ActivityState, config: RunnableConfig):
     db_data = unpack_config(state, config)
     if "moral" in state.get("activities", {}):
         data_list = state["activities"]["moral"]
-        payloads = []
-        for data in data_list:
-            filename = await save_moral_image_node(data, config)
-            data["image"] = filename
-            # Prepare payload for Firestore
-            if isinstance(data, dict):
-                payload = {**data}
-            else:
-                payload = {"items": data}
-            payloads.append(payload)
-            
-            
+        payloads = [
+            ({**data} if isinstance(data, dict) else {"items": data})
+            for data in data_list
+        ]
         await firestore_service.save_activity(db_data["story_id"], "moral", payloads)
     return {}
-async def save_moral_image_node(data: dict, config: RunnableConfig):
-    if data.get("image", None):
-        file_uuid = str(uuid.uuid4())
-        filename = f"images/{file_uuid}.png"
-        await storage_bucket_service.upload_file(filename, data.get("image", None))
-        return filename
-    return None
 
 # --- Routing Logic ---
 # Max retries aligned with PARALLEL_WORKFLOW_MAX_RETRIES (4) so master can
@@ -196,6 +233,22 @@ def create_retry_logic(activity_type: str):
             return "retry"
         return "fail"
     return should_retry
+
+
+def create_post_eval_routing(activity_type: str):
+    """After evaluate node: if eval passed, go to save. If failed, retry generator
+    unless we've hit the retry cap."""
+    def route(state: ActivityState):
+        if activity_type in state.get("errors", {}):
+            return "fail"
+        eval_record = state.get("activities", {}).get(f"_eval_{activity_type}") or {}
+        retries = state.get("retry_count", {}).get(activity_type, 0)
+        if eval_record.get("passed"):
+            return "save"
+        if retries < MAX_ACTIVITY_RETRIES:
+            return "retry"
+        return "fail"
+    return route
 
 # Helper to Check Exists & Route (Runs AT RUNTIME)
 async def route_start(state: ActivityState, config: RunnableConfig):
@@ -244,21 +297,25 @@ workflow.add_node("mark_completed", mark_activities_completed)
 # Activity 1: MCQ
 workflow.add_node("gen_mcq", generate_mcq_node)
 workflow.add_node("val_mcq", validate_mcq_node)
+workflow.add_node("eval_mcq", evaluate_mcq_node)
 workflow.add_node("save_mcq", save_mcq_node)
 
 # Activity 2: Art
 workflow.add_node("gen_art", generate_art_node)
 workflow.add_node("val_art", validate_art_node)
+workflow.add_node("eval_art", evaluate_art_node)
 workflow.add_node("save_art", save_art_node)
 
 # Activity 3: Moral
 workflow.add_node("gen_mor", generate_moral_node)
 workflow.add_node("val_mor", validate_moral_node)
+workflow.add_node("eval_mor", evaluate_moral_node)
 workflow.add_node("save_mor", save_moral_node)
 
 # Activity 4: Science
 workflow.add_node("gen_sci", generate_science_node)
 workflow.add_node("val_sci", validate_science_node)
+workflow.add_node("eval_sci", evaluate_science_node)
 workflow.add_node("save_sci", save_science_node)
 
 # Entry & Fan-out (Dynamic)
@@ -269,15 +326,25 @@ workflow.add_conditional_edges(
     ["gen_mcq", "gen_art", "gen_mor", "gen_sci"]
 )
 
-# Define Flows (Standardized: Gen -> Val -> Retry/Save)
+# Define Flows (Standardized: Gen -> Val -> Eval -> Retry/Save)
 for key, prefix in [("mcq", "mcq"), ("art", "art"), ("moral", "mor"), ("science", "sci")]:
-    gen, val, save = f"gen_{prefix}", f"val_{prefix}", f"save_{prefix}"
+    gen   = f"gen_{prefix}"
+    val   = f"val_{prefix}"
+    ev    = f"eval_{prefix}"
+    save  = f"save_{prefix}"
 
     workflow.add_edge(gen, val)
+    # Structural validation: pass → evaluation; fail → regenerate or give up
     workflow.add_conditional_edges(
         val,
         create_retry_logic(key),
-        {"next": save, "retry": gen, "fail": "mark_needs_human"}
+        {"next": ev, "retry": gen, "fail": "mark_needs_human"}
+    )
+    # LLM evaluation: pass → save; fail → regenerate or give up
+    workflow.add_conditional_edges(
+        ev,
+        create_post_eval_routing(key),
+        {"save": save, "retry": gen, "fail": "mark_needs_human"}
     )
     workflow.add_edge(save, END)
 

@@ -57,7 +57,7 @@ Return ONLY one valid JSON object in this exact structure:
     }
   ],
 
-  "moral": "Kids, today from this story we have learned..."
+  "moral": "Kids, today from this story we have learned [specific insight tied to THIS story's events — not a generic line]..."
 }
 
 STORY REQUIREMENTS (story field only):
@@ -66,9 +66,11 @@ Structure — never label in story:
 Exposition → Conflict → Rising Action → Climax →
 Falling Action → Resolution → Wisdom
 
-Faithfulness: Stay true to the spirit and events of 
-{story_seed}. Do not invent new plot points. 
-Simplify language but never change the wisdom.
+Faithfulness: Stay true to the spirit and events of
+{story_seed}, AND the exact subject and required moral
+of {topic}. Do not invent new plot points or substitute
+a different lesson. Simplify language but never change
+the wisdom.
 
 Opening: Grandparent voice, warm and intimate, 
 using {name}. Each opening feels like settling in 
@@ -88,10 +90,11 @@ Climax: One active moment of realisation or discovery —
 a choice made, a truth seen, a moment of courage.
 Never passive conversation.
 
-Universe Thread: Weave in the scientific or natural 
-principle that this ancient wisdom mirrors — through 
-a character's observation, question or action.
-Never as a standalone fact.
+Universe Thread: BOTH science_concepts must be SHOWN in
+the story — a character observes, asks about, or
+demonstrates each one through an action. The wisdom
+principle AND its modern science parallel both surface
+through character beats, never as standalone narration.
 
 Surprise: One unexpected moment the child will remember —
 a twist in the ancient story that feels both surprising 

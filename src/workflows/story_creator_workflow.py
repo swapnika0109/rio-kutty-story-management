@@ -9,7 +9,9 @@ Flow:
                                             ↓ yes           ↓ no
                                       [self_correct]      END (error)
                                             ↓
-                                      [generate_story] (loop)
+                                      [validate_story] (loop — corrected story
+                                                       re-enters validation,
+                                                       NOT regeneration)
 
 Triggered by: POST /select-topic (human picks a topic from WF1 output)
 Ends: Full story saved to Firestore `riostories_v3`; the Go client can then
@@ -178,7 +180,7 @@ workflow.add_conditional_edges(
     route_after_evaluate,
     {"save_story": "save_story", "self_correct_story": "self_correct_story", END: END},
 )
-workflow.add_edge("self_correct_story", "generate_story")
+workflow.add_edge("self_correct_story", "validate_story")
 workflow.add_edge("save_story", END)
 
 if os.environ.get("USE_MEMORY_CHECKPOINTER", "false").lower() == "true":

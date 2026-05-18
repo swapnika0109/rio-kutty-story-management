@@ -11,6 +11,13 @@ Flow:
 
 Single audio file per story in the story's requested language.
 Triggered by master_workflow via asyncio.gather alongside WF3 and WF5.
+
+Evaluation is hard-gated on coverage (every story paragraph must have a
+corresponding TTS timepoint) and duration plausibility (rendered duration must
+fall within a sensible band of the source word count). Soft GEval metrics judge
+TTS-friendliness of the source text (pacing, pronouncability, no inline SFX).
+On eval failure we regenerate the audio — TTS has no useful "self-correction"
+analog and re-rolling is cheap.
 """
 
 import uuid
@@ -44,6 +51,7 @@ def _unpack_config(state: AudioWorkflowState, config: RunnableConfig) -> dict:
     return {
         **state,
         "story_id": cfg.get("story_id"),
+        "age":      cfg.get("age", "3-4"),
         # Language from initial state (set by master from story data), fallback to config
         "language": state.get("language") or cfg.get("language", settings.TTS_LANGUAGE_CODE),
         "voice": state.get("voice") or settings.TTS_VOICE_NAME,

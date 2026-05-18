@@ -1,5 +1,7 @@
 import json
+import uuid
 from ...services.ai_service import AIService
+from ...services.database.storage_bucket import StorageBucketService
 from ...utils.logger import setup_logger
 from ...prompts import get_registry
 
@@ -8,6 +10,7 @@ logger = setup_logger(__name__)
 class ArtAgent:
     def __init__(self, prompt_version: str = "latest"):
         self.ai_service = AIService()
+        self.storage = StorageBucketService()
         self.prompt_version = prompt_version
 
     async def generate(self, state: dict):
@@ -41,8 +44,17 @@ class ArtAgent:
                     cleaned_text = response.replace("```json", "").replace("```", "").strip()
                 activity_data = json.loads(cleaned_text)
             
-            image = await self.ai_service.generate_image(activity_data.get("image_generation_prompt", ""))
-            activity_data["image"] = image
+            # Generate the image and upload immediately to GCS so raw bytes never
+            # enter LangGraph state. Putting hundreds of KB of PNG bytes into state
+            # is what blows past Firestore's 1 MB checkpoint cap when multiple
+            # activities run in parallel.
+            image_bytes = await self.ai_service.generate_image(activity_data.get("image_generation_prompt", ""))
+            if image_bytes:
+                filename = f"images/{uuid.uuid4()}.png"
+                await self.storage.upload_file(filename, image_bytes, content_type="image/png")
+                activity_data["image"] = filename
+            else:
+                activity_data["image"] = None
             return {
                 "activities": {**state.get("activities", {}), "art": activity_data},
                 "completed": state.get("completed", []) + ["art"]
