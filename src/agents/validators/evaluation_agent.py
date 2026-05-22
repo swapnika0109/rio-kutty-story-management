@@ -31,6 +31,10 @@ from google import genai
 from ...utils.logger import setup_logger
 from ...utils.config import get_settings
 
+# Bump when _TOPICS_CRITERIA or scoring logic changes so cached verdicts
+# from prior rubric versions are ignored.
+_EVAL_RUBRIC_VERSION = 1
+
 logger = setup_logger(__name__)
 settings = get_settings()
 
@@ -73,14 +77,14 @@ class _GeminiEvalModel(DeepEvalBaseLLM):
 
 
 # One shared instance per process — avoids re-creating the client on every metric.
-# Activities get their own adapter pinned to a higher-quota model because WF5 fans
-# out far more concurrent eval calls than other workflows.
+# Both topic and activity evaluations primary on gemini-2.5-flash-lite (cheapest).
+# The retry ladder falls back to gemini-2.5-flash (3-6× pricier but with higher
+# capacity / different load characteristics) ONLY on transient errors. In steady
+# state every call lands on flash-lite; flash is invoked once-per-failure at most.
 _GEMINI_EVAL_MODEL = _GeminiEvalModel()
-_GEMINI_ACTIVITIES_EVAL_MODEL = _GeminiEvalModel(model_name=settings.ACTIVITIES_EVALUATION_MODEL)
-# Cheaper / less-loaded fallback used only when the primary eval model 503s twice.
-# gemini-2.0-flash-lite is older, less popular, and ~25% cheaper than 2.5-flash-lite,
-# so retries land on a different endpoint and cost LESS rather than more.
-_GEMINI_EVAL_FALLBACK_MODEL = _GeminiEvalModel(model_name="gemini-2.0-flash-lite")
+_GEMINI_ACTIVITIES_EVAL_MODEL = _GeminiEvalModel()   # same default — flash-lite
+# Fallback used only when the primary eval model 503s twice in a row.
+_GEMINI_EVAL_FALLBACK_MODEL = _GeminiEvalModel(model_name="gemini-2.5-flash")
 
 
 # ---------------------------------------------------------------------------
@@ -704,10 +708,10 @@ async def _run_geval_with_retry(
     """Run one GEval metric with up to 2 retries on transient errors.
 
     Retry ladder:
-      attempt 1 — primary model
-      attempt 2 — same model, 3s backoff (handles brief flash-lite blip)
-      attempt 3 — FALLBACK model (gemini-2.0-flash-lite), 6s backoff
-                  — different endpoint, less likely to share the 503
+      attempt 1 — primary model (gemini-2.5-flash-lite), no delay
+      attempt 2 — primary again, 3s backoff (handles brief blip)
+      attempt 3 — FALLBACK model (gemini-2.5-flash), 6s backoff
+                  — higher-capacity endpoint, pricier but less load-shared
 
     Skip-policy after all attempts fail:
     - SOFT metrics: skip-as-pass (1.0) — soft metrics are quality-of-life and
@@ -839,6 +843,37 @@ class EvaluationAgent:
         country  = state.get("country", "Any")
         religion = state.get("religion", "universal_wisdom")
 
+        # ----------------------------------------------------------------
+        # Eval-verdict cache: skip GEval entirely if this topic batch
+        # already passed eval under the current rubric version.
+        # Cache key derives from the sample topic's library doc fields
+        # (theme, age, language-code, filter_value) so it's stable across
+        # restarts. A failed verdict is NOT cached — re-eval gives the
+        # corrector a fresh shot.
+        # ----------------------------------------------------------------
+        theme         = sample_topic.get("theme") or ""
+        filter_value  = sample_topic.get("filter_value") or ""
+        # Topics use the short language code in cache doc IDs (en/te); state
+        # may still hold the long form ("English"). Strip to first two chars.
+        lang_code     = (language or "en")[:2].lower()
+
+        if theme and filter_value:
+            # Lazy import to avoid pulling Firestore into modules that only
+            # use the evaluator in unit tests.
+            from ...services.database.firestore_service import FirestoreService
+            firestore = FirestoreService()
+            cached = await firestore.get_topic_eval_verdict(theme, age, lang_code, filter_value)
+            if (
+                cached
+                and cached.get("passed") is True
+                and cached.get("eval_version") == _EVAL_RUBRIC_VERSION
+            ):
+                logger.info(
+                    f"[story_topics] Eval cache HIT (theme={theme}/{filter_value}) — "
+                    f"skipping GEval. score={cached.get('score')}"
+                )
+                return {"evaluation": cached}
+
         title = sample_topic.get("title", "?")
         desc  = sample_topic.get("description", "?")
         request = (
@@ -894,15 +929,23 @@ class EvaluationAgent:
             f"avg={avg_score:.3f} metrics={metric_scores}"
         )
 
-        return {
-            "evaluation": {
-                "passed": passed,
-                "score": round(avg_score, 3),
-                "reason": reason,
-                "metrics": metric_scores,
-                "metric_reasons": metric_reasons,
-            }
+        verdict = {
+            "passed": passed,
+            "score": round(avg_score, 3),
+            "reason": reason,
+            "metrics": metric_scores,
+            "metric_reasons": metric_reasons,
+            "eval_version": _EVAL_RUBRIC_VERSION,
         }
+
+        # Cache passing verdicts only — a failed verdict shouldn't pin the
+        # corrector to its old answer on the next run.
+        if passed and theme and filter_value:
+            from ...services.database.firestore_service import FirestoreService
+            firestore = FirestoreService()
+            await firestore.save_topic_eval_verdict(theme, age, lang_code, filter_value, verdict)
+
+        return {"evaluation": verdict}
 
     # ------------------------------------------------------------------
     # story — multi-metric GEval with hard/soft tiers

@@ -1,5 +1,5 @@
 """
-Langfuse tracing utility for LangGraph workflows.
+Langfuse tracing utility for LangGraph workflows (langfuse v3/v4 SDK).
 
 Langfuse is free and open-source (MIT). Free cloud tier at cloud.langfuse.com.
 Self-hostable via Docker if needed.
@@ -14,11 +14,16 @@ Setup:
        LANGFUSE_HOST=https://cloud.langfuse.com   # or self-hosted URL
 
 Usage in workflow invocations:
-    from src.utils.tracing import get_trace_callbacks
+    from src.utils.tracing import build_trace_config
 
     config = {
         "configurable": {...},
-        "callbacks": get_trace_callbacks(name="WF2-story", metadata={"story_id": sid}),
+        **build_trace_config(
+            name="WF2-story",
+            metadata={"story_id": sid},
+            tags=["wf2", "story"],
+            session_id=sid,
+        ),
     }
     await workflow.ainvoke(state, config=config)
 
@@ -30,6 +35,7 @@ What you see in the Langfuse dashboard:
 - Full metadata (story_id, theme, age, language) on every trace
 """
 
+import os
 from typing import Optional
 from .config import get_settings
 from .logger import setup_logger
@@ -54,6 +60,13 @@ def _get_client():
         return None
 
     try:
+        # v3/v4 SDK reads credentials from env vars when the global client is
+        # constructed; setting them here lets the CallbackHandler (which takes
+        # no constructor args in v3+) find the same configuration.
+        os.environ.setdefault("LANGFUSE_PUBLIC_KEY", settings.LANGFUSE_PUBLIC_KEY)
+        os.environ.setdefault("LANGFUSE_SECRET_KEY", settings.LANGFUSE_SECRET_KEY)
+        os.environ.setdefault("LANGFUSE_HOST", settings.LANGFUSE_HOST)
+
         from langfuse import Langfuse
         _langfuse_client = Langfuse(
             public_key=settings.LANGFUSE_PUBLIC_KEY,
@@ -70,6 +83,81 @@ def _get_client():
         return None
 
 
+def _get_callback_handler():
+    """Build a single Langfuse CallbackHandler for the current process."""
+    client = _get_client()
+    if client is None:
+        return None
+
+    # v3/v4 SDK — handler lives in langfuse.langchain and requires the
+    # `langchain` package (not just langchain-core) to be installed.
+    try:
+        from langfuse.langchain import CallbackHandler
+        return CallbackHandler()
+    except ModuleNotFoundError as e:
+        if "langchain" in str(e):
+            logger.error(
+                "[Tracing] langfuse langchain integration needs the `langchain` "
+                "package: pip install langchain"
+            )
+            return None
+        # Different missing module — try the v2 fallback below.
+    except Exception as e:
+        logger.error(f"[Tracing] Failed to create v3/v4 callback handler: {e}")
+        return None
+
+    # v2.x fallback
+    try:
+        from langfuse.callback import CallbackHandler  # type: ignore
+        return CallbackHandler(
+            public_key=settings.LANGFUSE_PUBLIC_KEY,
+            secret_key=settings.LANGFUSE_SECRET_KEY,
+            host=settings.LANGFUSE_HOST,
+        )
+    except Exception as e:
+        logger.error(f"[Tracing] Failed to import CallbackHandler (v2 fallback): {e}")
+        return None
+
+
+def build_trace_config(
+    name: str,
+    metadata: Optional[dict] = None,
+    tags: Optional[list[str]] = None,
+    session_id: Optional[str] = None,
+) -> dict:
+    """
+    Build the trace-related portion of a LangChain RunnableConfig.
+
+    In langfuse v3/v4, the CallbackHandler reads these special keys from the
+    LangChain RunnableConfig:
+        run_name                  → trace name
+        metadata.langfuse_session_id → groups traces into a session
+        metadata.langfuse_tags    → tags shown in the dashboard
+        metadata (other keys)     → free-form trace metadata
+
+    Returns an empty dict when tracing is disabled, so callers can always
+    spread the result into their config without branching:
+
+        config = {"configurable": {...}, **build_trace_config(name="WF2-story", ...)}
+    """
+    handler = _get_callback_handler()
+    if handler is None:
+        return {}
+
+    md = dict(metadata or {})
+    if session_id:
+        md["langfuse_session_id"] = session_id
+    if tags:
+        md["langfuse_tags"] = list(tags)
+
+    return {
+        "callbacks": [handler],
+        "metadata":  md,
+        "tags":      list(tags) if tags else [],
+        "run_name":  name,
+    }
+
+
 def get_trace_callbacks(
     name: str,
     metadata: Optional[dict] = None,
@@ -77,44 +165,15 @@ def get_trace_callbacks(
     session_id: Optional[str] = None,
 ) -> list:
     """
-    Returns a list of LangChain/LangGraph callbacks for Langfuse tracing.
-    Returns an empty list when Langfuse is disabled — callers don't need to branch.
+    Back-compat: returns just the callbacks list.
 
-    Args:
-        name:       Human-readable trace name shown in the dashboard
-                    (e.g. "WF1-topics", "WF2-story", "WF3-image", "master")
-        metadata:   Extra key-value data attached to the trace
-                    (e.g. {"story_id": "abc", "theme": "theme1", "age": "3-4"})
-        tags:       Labels for filtering in the dashboard (e.g. ["production", "batch"])
-        session_id: Groups related traces into a session (e.g. use story_id or batch UUID)
-
-    Example:
-        callbacks = get_trace_callbacks(
-            name="WF2-story",
-            metadata={"story_id": story_id, "theme": theme, "age": age},
-            session_id=story_id,
-        )
-        config = {"configurable": {...}, "callbacks": callbacks}
+    NOTE: In langfuse v3/v4 the trace name, tags, and session_id are read from
+    the LangChain RunnableConfig (run_name / metadata), not the handler. If you
+    want those to appear in the dashboard, use build_trace_config() instead and
+    spread it into your config dict.
     """
-    client = _get_client()
-    if client is None:
-        return []
-
-    try:
-        from langfuse.callback import CallbackHandler
-        handler = CallbackHandler(
-            public_key=settings.LANGFUSE_PUBLIC_KEY,
-            secret_key=settings.LANGFUSE_SECRET_KEY,
-            host=settings.LANGFUSE_HOST,
-            trace_name=name,
-            metadata=metadata or {},
-            tags=tags or [],
-            session_id=session_id,
-        )
-        return [handler]
-    except Exception as e:
-        logger.error(f"[Tracing] Failed to create callback handler: {e}")
-        return []
+    cfg = build_trace_config(name=name, metadata=metadata, tags=tags, session_id=session_id)
+    return cfg.get("callbacks", [])
 
 
 def flush():

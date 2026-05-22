@@ -467,6 +467,100 @@ class FirestoreService:
             raise
 
     # ------------------------------------------------------------------
+    # Topic eval-verdict cache
+    # Stored on the same topic library doc so eval results live with the topics
+    # they describe. Versioned so rubric changes invalidate old verdicts.
+    # ------------------------------------------------------------------
+
+    async def get_topic_eval_verdict(
+        self, theme: str, age: str, lang: str, filter_value: str
+    ) -> dict | None:
+        """Returns the cached eval verdict for a topic batch, or None."""
+        try:
+            col = self._topic_collection(theme)
+            doc_id = self._library_doc_id(age, lang, filter_value)
+            doc = self.db.collection(col).document(doc_id).get()
+            if not doc.exists:
+                return None
+            return (doc.to_dict() or {}).get("last_evaluation")
+        except Exception as e:
+            logger.error(f"get_topic_eval_verdict failed: {e}")
+            return None
+
+    async def save_topic_eval_verdict(
+        self,
+        theme: str,
+        age: str,
+        lang: str,
+        filter_value: str,
+        verdict: dict,
+    ) -> None:
+        """Persists an eval verdict on the topic library doc.
+
+        verdict should be the dict returned by EvaluationAgent.evaluate()['evaluation']
+        plus an `eval_version` integer so future rubric tunes can invalidate it.
+
+        Uses set(merge=True) instead of update() so the write succeeds even if
+        the doc doesn't exist yet (avoids future cache misses on the recovery
+        path where eval ran but the library doc write was delayed/skipped).
+        """
+        try:
+            col = self._topic_collection(theme)
+            doc_id = self._library_doc_id(age, lang, filter_value)
+            self.db.collection(col).document(doc_id).set({
+                "last_evaluation": verdict,
+                "last_evaluated_at": firestore.SERVER_TIMESTAMP,
+            }, merge=True)
+            logger.info(f"[Firestore] Eval verdict saved: {col}/{doc_id} passed={verdict.get('passed')}")
+        except Exception as e:
+            logger.error(f"save_topic_eval_verdict failed: {e}")
+
+    # ------------------------------------------------------------------
+    # Pending workflows registry
+    # One doc per topic_id, written when WF2 starts, deleted when master
+    # finalizes. Lets a client look up an interrupted pipeline's thread_id
+    # to resume it. Doc id == topic_id for direct lookup.
+    # ------------------------------------------------------------------
+
+    _PENDING_COLLECTION = "pending_workflows"
+
+    async def save_pending_workflow(
+        self, topic_id: str, thread_id: str, topic: dict, meta: dict | None = None
+    ) -> None:
+        """Registers an in-flight pipeline so it can be resumed by topic_id."""
+        try:
+            payload = {
+                "topic_id":   topic_id,
+                "thread_id":  thread_id,
+                "topic":      topic,
+                "meta":       meta or {},
+                "created_at": firestore.SERVER_TIMESTAMP,
+            }
+            self.db.collection(self._PENDING_COLLECTION).document(topic_id).set(payload)
+            logger.info(f"[Firestore] Pending workflow registered: topic_id={topic_id}")
+        except Exception as e:
+            logger.error(f"save_pending_workflow failed: {e}")
+
+    async def get_pending_workflow(self, topic_id: str) -> dict | None:
+        """Returns the pending-workflow record for a topic_id, or None."""
+        try:
+            doc = self.db.collection(self._PENDING_COLLECTION).document(topic_id).get()
+            if not doc.exists:
+                return None
+            return doc.to_dict()
+        except Exception as e:
+            logger.error(f"get_pending_workflow failed: {e}")
+            return None
+
+    async def delete_pending_workflow(self, topic_id: str) -> None:
+        """Removes the pending-workflow record once the pipeline completes."""
+        try:
+            self.db.collection(self._PENDING_COLLECTION).document(topic_id).delete()
+            logger.info(f"[Firestore] Pending workflow cleared: topic_id={topic_id}")
+        except Exception as e:
+            logger.error(f"delete_pending_workflow failed (non-fatal): {e}")
+
+    # ------------------------------------------------------------------
     # Checkpoint cleanup
     # ------------------------------------------------------------------
 

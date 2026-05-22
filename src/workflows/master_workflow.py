@@ -409,9 +409,9 @@ async def handle_activities_decision_node(state: MasterWorkflowState, config: Ru
 
 async def finalize_node(state: MasterWorkflowState, config: RunnableConfig) -> dict:
     """
-    Marks pipeline as complete and cleans up Firestore checkpoints.
-    Checkpoint data is no longer needed once the full story (with image_url,
-    audio_url, and activities) is persisted in the story document.
+    Marks pipeline as complete and cleans up Firestore checkpoints + the
+    pending_workflows registry doc. None of this data is needed once the
+    full story (with image_url, audio_url, and activities) is persisted.
     """
     story_id = state.get("story_id")
     statuses = state.get("workflow_statuses", {})
@@ -420,6 +420,11 @@ async def finalize_node(state: MasterWorkflowState, config: RunnableConfig) -> d
     # Clean up all checkpoints for this story's threads
     thread_ids = _collect_thread_ids(story_id)
     await firestore.delete_workflow_checkpoints(thread_ids)
+
+    # Remove the resume registry entry. story_id is also the topic_id and the
+    # canonical thread_id root (see batch_create_stories_node).
+    if story_id:
+        await firestore.delete_pending_workflow(story_id)
 
     return {}
 

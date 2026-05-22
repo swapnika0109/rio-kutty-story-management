@@ -26,7 +26,6 @@ State key passed via config.configurable:
 """
 
 import asyncio
-import os
 import uuid
 from typing import Literal
 from langgraph.graph import StateGraph, END
@@ -38,7 +37,6 @@ from ..agents.story.topics_creator_agent import TopicsCreatorAgent
 from ..agents.story.self_correction_agent import SelfCorrectionAgent
 from ..agents.validators.evaluation_agent import EvaluationAgent
 from ..services.database.firestore_service import FirestoreService
-from ..services.database.checkpoint_service import FirestoreCheckpointer
 from ..utils.logger import setup_logger
 from ..utils.config import get_settings
 
@@ -140,7 +138,7 @@ async def batch_create_stories_node(state: StoryTopicsState, config: RunnableCon
     # Local imports to avoid module-level circular imports between WF1/WF2/Master
     from ..workflows.story_creator_workflow import story_creator_workflow
     from ..workflows.master_workflow import master_workflow
-    from ..utils.tracing import get_trace_callbacks
+    from ..utils.tracing import build_trace_config
 
     cfg = config.get("configurable", {})
     age        = cfg.get("age", "3-4")
@@ -219,6 +217,19 @@ async def batch_create_stories_node(state: StoryTopicsState, config: RunnableCon
                     f"image={needs_image} audio={needs_audio} activities={needs_activities}"
                 )
 
+                # Re-register in pending_workflows so /resume-pipeline can pick
+                # this run up if THIS resume attempt also crashes mid-flight.
+                # (master.finalize_node will clear it on success.)
+                await firestore.save_pending_workflow(
+                    topic_id=existing_story_id,
+                    thread_id=existing_story_id,
+                    topic=topic,
+                    meta={
+                        "age": age, "language": language, "theme": theme,
+                        "topics_id": topics_id, "voice": voice_type,
+                    },
+                )
+
                 if needs_image or needs_audio:
                     master_config = {
                         "configurable": {
@@ -229,7 +240,7 @@ async def batch_create_stories_node(state: StoryTopicsState, config: RunnableCon
                             "theme":     theme,
                             "voice":     voice_type,
                         },
-                        "callbacks": get_trace_callbacks(
+                        **build_trace_config(
                             name="master-pipeline",
                             metadata={"story_id": existing_story_id, "topic": title,
                                       "theme": theme, "age": age},
@@ -287,6 +298,19 @@ async def batch_create_stories_node(state: StoryTopicsState, config: RunnableCon
             # ----------------------------------------------------------------
             story_id = topic.get("topic_id") or str(uuid.uuid4())
 
+            # Register this pipeline in pending_workflows so a client can
+            # look up the thread_id by topic_id and resume if interrupted.
+            # The doc is deleted by master.finalize on successful completion.
+            await firestore.save_pending_workflow(
+                topic_id=story_id,
+                thread_id=story_id,  # canonical root; per-workflow threads append _wf2/_master
+                topic=topic,
+                meta={
+                    "age": age, "language": language, "theme": theme,
+                    "topics_id": topics_id, "voice": voice_type,
+                },
+            )
+
             # --- WF2: Story Creator ---
             wf2_config = {
                 "configurable": {
@@ -297,7 +321,7 @@ async def batch_create_stories_node(state: StoryTopicsState, config: RunnableCon
                     "topics_id": topics_id,
                     "theme":     theme,
                 },
-                "callbacks": get_trace_callbacks(
+                **build_trace_config(
                     name="WF2-story",
                     metadata={"story_id": story_id, "topic": title, "theme": theme, "age": age},
                     tags=["wf2", "story", "batch"],
@@ -334,7 +358,7 @@ async def batch_create_stories_node(state: StoryTopicsState, config: RunnableCon
                     "theme":     theme,
                     "voice":     voice_type,
                 },
-                "callbacks": get_trace_callbacks(
+                **build_trace_config(
                     name="master-pipeline",
                     metadata={"story_id": story_id, "topic": title, "theme": theme, "age": age},
                     tags=["master", "image", "audio", "activities", "batch"],
@@ -442,10 +466,9 @@ workflow.add_edge("self_correct_topics", "generate_topics")
 workflow.add_edge("save_topics", "batch_create_stories")
 workflow.add_edge("batch_create_stories", END)
 
-# Checkpointer: MemorySaver for dev, Firestore for prod
-if os.environ.get("USE_MEMORY_CHECKPOINTER", "false").lower() == "true":
-    checkpointer = MemorySaver()
-else:
-    checkpointer = FirestoreCheckpointer()
-
-story_topics_workflow = workflow.compile(checkpointer=checkpointer)
+# WF1 uses MemorySaver only: it has no human-in-loop interrupts and its outputs
+# (topics) are already persisted to the theme topic collections + eval-verdict
+# cache. Cross-restart resume is therefore unnecessary at this stage — a crashed
+# WF1 simply re-runs, hitting the topic + eval caches. Persistent checkpoints
+# start from WF2 onward (see batch_create_stories_node).
+story_topics_workflow = workflow.compile(checkpointer=MemorySaver())

@@ -19,11 +19,13 @@ Requires-Dist: google-cloud-pubsub>=2.0.0
 Requires-Dist: google-cloud-storage>=2.14.0
 Requires-Dist: huggingface_hub>=0.1.0
 Requires-Dist: google-cloud-texttospeech>=2.16.0
+Requires-Dist: deepeval>=1.4.0
+Requires-Dist: langfuse>=2.0.0
 Provides-Extra: test
 Requires-Dist: pytest>=8.0.0; extra == "test"
 Requires-Dist: pytest-asyncio>=0.23.0; extra == "test"
 Requires-Dist: pytest-cov>=4.1.0; extra == "test"
 Requires-Dist: pytest-mock>=3.12.0; extra == "test"
-Requires-Dist: deepeval>=1.4.0; extra == "test"
+Requires-Dist: pytest-timeout>=2.3.0; extra == "test"
 Provides-Extra: dev
 Requires-Dist: rio-kutty[test]; extra == "dev"

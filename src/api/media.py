@@ -8,7 +8,7 @@ from ..workflows.audio_workflow import audio_workflow
 from ..services.database.firestore_service import FirestoreService
 from ..utils.logger import setup_logger
 from ..utils.config import get_settings
-from ..utils.tracing import get_trace_callbacks
+from ..utils.tracing import build_trace_config
 
 logger = setup_logger(__name__)
 settings = get_settings()
@@ -59,7 +59,7 @@ async def _run_master_workflow(request: GenerateMediaRequest):
                 "theme":     theme,
                 "voice":     request.voice_type,
             },
-            "callbacks": get_trace_callbacks(
+            **build_trace_config(
                 name="master-pipeline",
                 metadata={"story_id": request.story_id, "theme": theme,
                           "title": story.get("title"), "age": request.age},
@@ -114,7 +114,7 @@ async def _run_image_workflow(story_id: str, age: str, language: str):
                 "language":    story.get("language", language),
                 "theme":       theme,
             },
-            "callbacks": get_trace_callbacks(
+            **build_trace_config(
                 name="WF3-image",
                 metadata={"story_id": story_id, "theme": theme, "title": story.get("title")},
                 tags=["wf3", "image", "manual-retry"],
@@ -174,7 +174,7 @@ async def _run_audio_workflow(story_id: str, language: Optional[str], voice: Opt
                 "story_id":  story_id,
                 "theme":     theme,
             },
-            "callbacks": get_trace_callbacks(
+            **build_trace_config(
                 name="WF4-audio",
                 metadata={"story_id": story_id, "theme": theme,
                           "language": lang, "title": story.get("title")},

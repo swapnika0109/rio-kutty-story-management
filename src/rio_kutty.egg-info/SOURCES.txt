@@ -18,6 +18,11 @@ src/agents/story/topics_creator_agent.py
 src/agents/validators/__init__.py
 src/agents/validators/evaluation_agent.py
 src/agents/validators/validator_agent.py
+src/api/__init__.py
+src/api/activities.py
+src/api/health.py
+src/api/media.py
+src/api/stories.py
 src/models/__init__.py
 src/models/state.py
 src/prompts/__init__.py
@@ -33,10 +38,15 @@ src/services/database/__init__.py
 src/services/database/checkpoint_service.py
 src/services/database/firestore_service.py
 src/services/database/storage_bucket.py
+src/topics/__init__.py
+src/topics/chill_stories.py
+src/topics/mindfull_topics.py
+src/topics/pp_topics.py
 src/utils/__init__.py
 src/utils/config.py
 src/utils/logger.py
 src/utils/resilience.py
+src/utils/tracing.py
 src/workflows/__init__.py
 src/workflows/activity_workflow.py
 src/workflows/audio_workflow.py
