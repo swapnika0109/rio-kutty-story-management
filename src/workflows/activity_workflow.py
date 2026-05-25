@@ -113,26 +113,27 @@ def validate_moral_node(state: ActivityState, config: RunnableConfig):
 # so only one activity evaluates at a time; the 7 metrics *within* an activity still
 # parallelise (capped by _eval_semaphore inside the evaluator). Gen+val stay parallel.
 #
-# Lazy-init so the lock binds to the running event loop on first use. Each
-# pytest-asyncio test gets its own loop; a module-level `asyncio.Lock()` created
-# at import time can end up bound to a now-defunct loop and silently no-op.
-_activity_eval_lock: asyncio.Lock | None = None
+# Module-level lock. Python 3.10+ asyncio.Lock is loop-agnostic at construction
+# time (binds on first acquire), so a single shared instance works across all
+# WF5 invocations in the same event loop. Tests that need isolation should
+# reset this fixture-scope.
+#
+# IMPORTANT: Do NOT re-introduce a "rebind to current loop" helper using
+# getattr(lock, "_loop", default). On Python 3.11 asyncio.Lock has _loop=None
+# at construction; that getattr returns None which compares unequal to the
+# running loop, causing a fresh lock on EVERY call and breaking serialisation.
+# This was the WF5 burst-503 cause in production.
+_activity_eval_lock = asyncio.Lock()
 
 
 def _get_activity_eval_lock() -> asyncio.Lock:
-    global _activity_eval_lock
-    try:
-        loop = asyncio.get_running_loop()
-    except RuntimeError:
-        loop = None
-    if _activity_eval_lock is None or getattr(_activity_eval_lock, "_loop", loop) is not loop:
-        _activity_eval_lock = asyncio.Lock()
     return _activity_eval_lock
 
 
 async def _evaluate_activity(state: ActivityState, config: RunnableConfig, activity_type: str):
-    """Run the evaluator on one activity; on fail, bump that activity's retry counter
-    and set an evaluation_failed flag so the post-eval router can re-route to gen."""
+    """Run the evaluator on one activity. Always writes the verdict under
+    activities[_eval_<type>] so the post-eval router can decide retry vs save,
+    and so the next gen pass can read metric_reasons to correct itself."""
     enriched = {**unpack_config(state, config), "activity_type": activity_type}
     # Serialise across activities so Gemini doesn't see a 28-call burst.
     lock = _get_activity_eval_lock()
@@ -143,11 +144,21 @@ async def _evaluate_activity(state: ActivityState, config: RunnableConfig, activ
         logger.info(f"[WF5/{activity_type}] Released eval lock")
     evaluation = (result or {}).get("evaluation") or {}
     passed = evaluation.get("passed", False)
-    # Always write the eval result (passed bool + score + reason) keyed by
-    # `_eval_<type>` so the post-eval router can read the LATEST outcome.
-    # Using merge_dicts on `activities` means last-write-wins per key — a pass
-    # after a prior fail correctly overwrites the failure record.
-    eval_record = {"passed": passed, "score": evaluation.get("score"), "reason": evaluation.get("reason")}
+    # Always write the eval result keyed by `_eval_<type>` so the post-eval
+    # router can read the LATEST outcome and the next gen pass can read the
+    # per-metric reasons to correct itself. Using merge_dicts on `activities`
+    # means last-write-wins per key — a pass after a prior fail overwrites.
+    per_activity = (evaluation.get("per_activity") or {}).get(activity_type, {})
+    eval_record = {
+        "passed": passed,
+        "score": evaluation.get("score"),
+        "reason": evaluation.get("reason"),
+        # Both metrics (scores) and metric_reasons are stored so the retry
+        # feedback prompt can show ONLY the metrics that actually failed
+        # (filtered by score vs threshold, not by parsing reason strings).
+        "metrics": per_activity.get("metrics") or {},
+        "metric_reasons": per_activity.get("metric_reasons") or {},
+    }
     if passed:
         logger.info(f"[WF5/{activity_type}] Evaluation PASSED score={evaluation.get('score')}")
         return {"activities": {f"_eval_{activity_type}": eval_record}}
@@ -155,11 +166,9 @@ async def _evaluate_activity(state: ActivityState, config: RunnableConfig, activ
         f"[WF5/{activity_type}] Evaluation FAILED score={evaluation.get('score')} "
         f"reason={evaluation.get('reason')}"
     )
-    current_retry = state.get("retry_count", {}).get(activity_type, 0)
-    return {
-        "retry_count": {**state.get("retry_count", {}), activity_type: current_retry + 1},
-        "activities": {f"_eval_{activity_type}": eval_record},
-    }
+    # Note: retry_count is bumped by the generator node on each re-entry, so we
+    # do NOT bump it here — double-incrementing would skew the retry cap.
+    return {"activities": {f"_eval_{activity_type}": eval_record}}
 
 async def evaluate_mcq_node(state: ActivityState, config: RunnableConfig):
     return await _evaluate_activity(state, config, "mcq")

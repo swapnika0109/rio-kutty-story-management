@@ -2,6 +2,7 @@ import json
 from ...services.ai_service import AIService
 from ...utils.logger import setup_logger
 from ...prompts import get_registry
+from . import _prepend_retry_feedback
 
 logger = setup_logger(__name__)
 
@@ -33,6 +34,7 @@ class MCQAgent:
             summary=summary,
             language=language
         )
+        prompt = _prepend_retry_feedback(prompt, state, "mcq")
 
         try:
             response = await self.ai_service.generate_content(prompt)

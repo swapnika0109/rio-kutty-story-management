@@ -1,20 +1,30 @@
-# Story Topics Prompt — Telugu — v1
-#
-# అందుబాటులో ఉన్న వేరియబుల్స్ (Available variables):
-#   {age}       → వయస్సు సమూహం, e.g. "3-4", "5-6", "7-8"
-#   {category}  → యాదృచ్ఛికంగా ఎంచుకున్న విభాగం, e.g. "స్నేహం", "అడవి & జంతువులు"
-#
-# Expected output: JSON array of exactly 5 topic objects
-#   [
-#     {
-#       "title": "...",
-#       "theme": "...",
-#       "moral": "...",
-#       "age_group": "{age}",
-#       "description": "2-3 వాక్యాల కథా సారాంశం"
-#     }
-#   ]
-#
-# TODO: ఈ లైన్ కింద మీ తెలుగు ప్రాంప్ట్ రాయండి
+మీరు {age} సంవత్సరాల పిల్లల కోసం కథా శీర్షికలు తయారు చేసే మనిషి.
 
+కింది list నుండి సరిగ్గా {length} శీర్షికలు, వాటి descriptions తో కలిపి తయారు చేయండి:
+{promptText}
 
+CRITICAL — ప్రతి description తప్పనిసరిగా:
+- 12–20 పదాలు ఉండాలి (తక్కువ కాదు, ఎక్కువ కాదు)
+- పాత్ర ఏం చేస్తోందో చూపించే ఒక action verb ఉండాలి
+- కేవలం activity description కాకుండా — ఒక feeling, మార్పు, లేదా పాఠం యొక్క hint ఉండాలి
+
+శీర్షిక rules:
+- గరిష్టంగా 6 పదాలు
+- పాత్ర లేదా వివిడ్ image ఉండాలి — కేవలం activity name కాదు
+- వెచ్చగా, దగ్గర అనిపించాలి — కథ పిల్లవాడి గురించే ఉన్నట్టు
+
+ఇతర rules:
+- Source: రోజువారీ నిజ జీవిత situations మరియు పాత్రల నుండి శీర్షికలు తీయండి — కుటుంబం, స్నేహితులు, పెంపుడు జంతువులు, టీచర్లు, రైతులు, స్కూల్, ప్రకృతి
+- భాష: {age} సంవత్సరాల పిల్లవాడికి అర్థమయ్యే సులభమైన పదాలు
+- Preference: tone "{preference}" ని reflect చేయాలి
+- Diversity: ప్రతి శీర్షిక వేరే రోజువారీ situation ని explore చేయాలి — రెండు ఎప్పుడూ ఒకేలా అనిపించొద్దు
+- ఇప్పటికే ఉన్న ఈ శీర్షికలను repeat చేయొద్దు లేదా అలాగే అనిపించొద్దు: {existing_titles}
+- ఈ పాత్ర పేర్లు ఏవీ మళ్ళీ వాడొద్దు — కొత్త పేర్లు పెట్టండి: {existing_characters}
+
+Output format — ఇది మాత్రమే return చేయండి, వేరే text వద్దు:
+title1|description1
+title2|description2
+title3|description3
+
+Example output:
+Grandma's Secret Garden|A quiet old garden holds a surprise that teaches one child the power of patience

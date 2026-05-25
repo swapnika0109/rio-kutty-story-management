@@ -1,22 +1,37 @@
-# Story Topics Prompt — Telugu — v1
-#
-# అందుబాటులో ఉన్న వేరియబుల్స్ (Available variables):
-#   {age}       → వయస్సు సమూహం, e.g. "3-4", "5-6", "7-8"
-#   {category}  → యాదృచ్ఛికంగా ఎంచుకున్న విభాగం, e.g. "స్నేహం", "అడవి & జంతువులు"
-#
-# Expected output: JSON array of exactly 5 topic objects
-#   [
-#     {
-#       "title": "...",
-#       "theme": "...",
-#       "moral": "...",
-#       "age_group": "{age}",
-#       "description": "2-3 వాక్యాల కథా సారాంశం"
-#     }
-#   ]
-#
-# TODO: ఈ లైన్ కింద మీ తెలుగు ప్రాంప్ట్ రాయండి
+మీరు {age} సంవత్సరాల పిల్లల కోసం కథా శీర్షికలు తయారు చేసే మనిషి.
 
+కింది list నుండి seeds తీసుకుని సరిగ్గా {length} ORIGINAL కథా శీర్షికలు తయారు చేయండి. ప్రతి line లో ఒక theme + ఒక hook + ఒక పాత్ర ఉంటాయి — వీటిని creative seeds గా వాడండి, శీర్షికగా copy చేయొద్దు:
+{promptText}
 
+Seed ఎలా వాడాలి:
+- "character" కి ఒక పేరు మరియు ఒక లక్ష్యం ఇవ్వండి
+- "hook" ని కథ యొక్క emotional hint గా వాడండి — కానీ మీ సొంత మాటల్లో తిరిగి రాయండి
+- శీర్షికలో theme name కాకుండా, పేరుపెట్టిన పాత్ర action లో ఉండాలి
 
+CRITICAL — ప్రతి description తప్పనిసరిగా:
+- 12–20 పదాలు ఉండాలి (తక్కువ కాదు, ఎక్కువ కాదు)
+- పేరుపెట్టిన పాత్ర ఏం చేస్తోందో చూపించే ఒక action verb ఉండాలి
+- కేవలం activity description కాకుండా — ఒక feeling, మార్పు, లేదా పాఠం యొక్క hint ఉండాలి
 
+శీర్షిక rules:
+- గరిష్టంగా 6 పదాలు
+- పేరుపెట్టిన పాత్ర లేదా వివిడ్ image ఉండాలి — theme name కాదు
+- ఒక వ్యక్తి, choice, లేదా క్షణం గురించి ఆసక్తి రేకెత్తించాలి
+
+ఇతర rules:
+- భాష: {age} సంవత్సరాల పిల్లవాడికి అర్థమయ్యే సులభమైన పదాలు
+- Context: కథలు {country} పిల్లలకు relevant గా అనిపించాలి
+- Preference: tone "{preference}" ని reflect చేయాలి
+- Diversity: ప్రతి శీర్షిక వేరే పాత్ర లేదా situation ని explore చేయాలి — రెండు ఎప్పుడూ ఒకేలా అనిపించొద్దు
+- శీర్షికగా theme name (ఉదా. "Sunshine and Shadows", "The Water Cycle") వాడొద్దు
+- ఇప్పటికే ఉన్న ఈ శీర్షికలను repeat చేయొద్దు లేదా అలాగే అనిపించొద్దు: {existing_titles}
+- ఈ పాత్ర పేర్లు ఏవీ మళ్ళీ వాడొద్దు — కొత్త పేర్లు పెట్టండి: {existing_characters}
+
+Style examples (వీటిని copy చేయొద్దు — పైన seeds నుండి మీ సొంత శీర్షికలు రాయండి):
+- Sunny the Sunbeam's First Job|A tiny sunbeam learns why waking up the sleepy world matters more than playing
+- The Turtle Who Raced the Wind|A slow turtle tries something wild and surprises everyone at the finish line
+
+Output format — ఇది మాత్రమే return చేయండి, వేరే text వద్దు:
+title1|description1
+title2|description2
+title3|description3

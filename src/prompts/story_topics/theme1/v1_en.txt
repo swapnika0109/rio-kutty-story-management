@@ -25,6 +25,7 @@ Other rules:
 - Diversity: each title must explore a different character or situation — no two should feel similar
 - Do NOT use a theme name (e.g. "Sunshine and Shadows", "The Water Cycle") as the title
 - Do NOT repeat or closely resemble these already-used titles: {existing_titles}
+- Do NOT reuse any of these character names — invent fresh ones: {existing_characters}
 
 Style examples (do NOT copy these titles — write your own from the seeds above):
 - Sunny the Sunbeam's First Job|A tiny sunbeam learns why waking up the sleepy world matters more than playing

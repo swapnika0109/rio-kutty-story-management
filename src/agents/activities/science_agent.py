@@ -2,6 +2,7 @@ from ...services.ai_service import AIService
 from ...services.database.storage_bucket import StorageBucketService
 from ...utils.logger import setup_logger
 from ...prompts import get_registry
+from . import _prepend_retry_feedback
 import json
 import uuid
 
@@ -42,6 +43,7 @@ class ScienceAgent:
             story=story,
             language=language
         )
+        prompt = _prepend_retry_feedback(prompt, state, "science")
 
         try:
             response = await self.ai_service.generate_content(prompt)

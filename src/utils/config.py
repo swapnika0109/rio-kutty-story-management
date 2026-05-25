@@ -64,8 +64,11 @@ class Settings(BaseSettings):
     RATE_LIMIT_TOKENS_PER_SECOND: float = 3.0
     RATE_LIMIT_BURST_CAPACITY: int = 6
 
-    # Parallel workflow retries before escalating to human-in-the-loop
-    PARALLEL_WORKFLOW_MAX_RETRIES: int = 4
+    # Parallel workflow retries before escalating to human-in-the-loop.
+    # Was 4; lowered to 2 because the score-filtered retry feedback now makes
+    # retries genuinely corrective (vs. blind re-rolls). Two attempts is enough
+    # for most activities; persistent failures escalate to needs_human cleanly.
+    PARALLEL_WORKFLOW_MAX_RETRIES: int = 2
 
     # Pub/Sub topic to notify admin when a parallel workflow needs human review
     HUMAN_LOOP_NOTIFICATION_TOPIC: str = ""

@@ -1,3 +1,4 @@
+import re
 from google.cloud import firestore
 from ...utils.config import get_settings
 from ...utils.logger import setup_logger
@@ -18,6 +19,67 @@ _TOPIC_COLLECTIONS = {
     "theme2": "mindful_topics",
     "theme3": "chill_stories_topics",
 }
+
+# Common leading words that aren't characters. Lowercased; matched against the
+# title's first token. Articles, prepositions, "when/why" stems, descriptive
+# adjectives, and possessive stand-alones live here — anything that signals
+# "the next token is the actual character" or "this title doesn't lead with a
+# character".
+_TITLE_STOPWORDS_LEADING = frozenset({
+    "the", "a", "an", "my", "our", "his", "her", "their", "this", "that",
+    "when", "why", "how", "where", "who", "what", "if",
+    "little", "tiny", "big", "small", "old", "young", "new", "brave",
+    "kind", "happy", "sad", "lost", "lonely", "curious",
+    "across", "under", "above", "behind", "inside", "outside", "near", "beyond",
+    # Bilingual: Telugu has no articles, so any first non-Latin token is a
+    # candidate name and we rely on the connector + generic-noun filters.
+})
+
+# Words that signal "what came BEFORE is the character" — used to stop scanning
+# multi-word names. e.g. "Sunny the Sunbeam's First Job" → stop at "the".
+_TITLE_CONNECTORS = frozenset({
+    "the", "and", "who", "with", "of", "in", "on", "at", "to", "for",
+    "from", "by", "saves", "finds", "meets", "learns", "tries", "loves",
+})
+
+# Tokens that aren't characters even when they show up as the first word.
+# These are descriptive nouns the prompt may produce when no proper name fits.
+_GENERIC_CHARACTER_NOUNS = frozenset({
+    "turtle", "rabbit", "fox", "bird", "cat", "dog", "lion", "elephant",
+    "moon", "sun", "star", "tree", "flower", "river", "mountain", "wind",
+    "grandma", "grandpa", "mother", "father", "boy", "girl", "child",
+})
+
+
+def _extract_character_names(titles: set[str]) -> set[str]:
+    """Pull likely character names out of a set of story titles.
+
+    Heuristic, not exact. Walks each title left-to-right, skipping articles
+    and other leading stopwords, then takes the first token that isn't a
+    connector or a generic creature/relative noun. Titles in this codebase
+    are short (≤6 words) and the prompt asks the LLM to lead with a named
+    character, so the first surviving token is overwhelmingly the protagonist.
+
+    Note: titles arrive lowercased from get_all_topic_titles. We can't gate on
+    capitalisation; we rely on the stopword + generic-noun filters instead.
+    """
+    names: set[str] = set()
+    for raw in titles:
+        if not raw:
+            continue
+        # Strip possessive 's and punctuation; collapse to plain tokens.
+        clean = re.sub(r"['’]s\b", "", raw)
+        tokens = re.findall(r"[A-Za-zఀ-౿]+", clean)
+        i = 0
+        while i < len(tokens) and tokens[i].lower() in _TITLE_STOPWORDS_LEADING:
+            i += 1
+        if i >= len(tokens):
+            continue
+        first = tokens[i].lower()
+        if first in _TITLE_CONNECTORS or first in _GENERIC_CHARACTER_NOUNS:
+            continue
+        names.add(first)
+    return names
 
 _STORY_COLLECTIONS = {
     "theme1": "planet_protectors_stories",
@@ -381,6 +443,27 @@ class FirestoreService:
         except Exception as e:
             logger.error(f"get_all_topic_titles failed: {e}")
         return titles
+
+    async def get_all_topic_character_names(
+        self, age: str, lang: str, titles: set[str] | None = None,
+    ) -> set[str]:
+        """
+        Returns the set of likely character names extracted from all existing
+        topic titles for the given age + language. Used to nudge the topics LLM
+        away from re-using the same protagonist name (e.g. always "Sunny" or
+        always "Rio") across batches.
+
+        Extraction is a cheap heuristic over titles — no LLM, no extra storage.
+        We pull the first proper-noun-shaped token from each title, before
+        common connector words. Best-effort: it's fine to miss some, the LLM
+        only needs a representative list to avoid.
+
+        Pass `titles` to reuse a result from an earlier get_all_topic_titles
+        call in the same request — avoids a duplicate Firestore walk.
+        """
+        if titles is None:
+            titles = await self.get_all_topic_titles(age, lang)
+        return _extract_character_names(titles)
 
     async def save_title_library_entry(
         self,

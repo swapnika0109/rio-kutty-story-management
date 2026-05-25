@@ -4,6 +4,7 @@ from ...services.ai_service import AIService
 from ...services.database.storage_bucket import StorageBucketService
 from ...utils.logger import setup_logger
 from ...prompts import get_registry
+from . import _prepend_retry_feedback
 
 logger = setup_logger(__name__)
 
@@ -39,7 +40,8 @@ class MoralAgent:
             story=story,
             language=language
         )
-        
+        prompt = _prepend_retry_feedback(prompt, state, "moral")
+
         try:
             response = await self.ai_service.generate_content(prompt)
             # Response is a dict: {"text": "...", "images": [...]}

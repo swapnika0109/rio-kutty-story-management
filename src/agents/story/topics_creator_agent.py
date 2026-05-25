@@ -438,13 +438,20 @@ class TopicsCreatorAgent:
                 f"({len(cached)}/{n}) — generating {n - len(cached)} more"
             )
 
-        # 2. Fetch all existing titles globally (across all themes/slots) for dedup
+        # 2. Fetch all existing titles globally (across all themes/slots) for dedup,
+        # plus extracted character names so the LLM avoids reusing the same
+        # protagonist across batches. Character extraction is a cheap heuristic
+        # over titles — see _extract_character_names.
         need = n - len(cached) if cached else n
         all_existing_titles = await self.db.get_all_topic_titles(age, lang)
+        all_existing_characters = await self.db.get_all_topic_character_names(
+            age, lang, titles=all_existing_titles,
+        )
         prompt_kwargs = {
             **prompt_kwargs,
-            "length":          need,
-            "existing_titles": ", ".join(sorted(all_existing_titles)) if all_existing_titles else "",
+            "length":              need,
+            "existing_titles":     ", ".join(sorted(all_existing_titles)) if all_existing_titles else "",
+            "existing_characters": ", ".join(sorted(all_existing_characters)) if all_existing_characters else "",
         }
 
         # 3. Load prompt (skip silently if file not written yet)
