@@ -19,6 +19,7 @@ Other rules:
 - Preference: tone must reflect "{preference}"
 - Diversity: each title must come from a different story or lesson — no two should feel similar
 - Do NOT repeat or closely resemble these already-used titles: {existing_titles}
+- Do NOT reuse any of these character names — pick fresh figures from the source: {existing_characters}
 
 SAFETY for age {age} — strictly avoid:
 - Violence, jealousy, betrayal, war, death, punishment, divine wrath, exile, or floods

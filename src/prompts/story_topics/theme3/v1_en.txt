@@ -19,6 +19,7 @@ Other rules:
 - Preference: tone must reflect "{preference}"
 - Diversity: each title must explore a different everyday situation — no two should feel similar
 - Do NOT repeat or closely resemble these already-used titles: {existing_titles}
+- Do NOT reuse any of these character names — invent fresh ones: {existing_characters}
 
 Output format — return ONLY this, no extra text:
 title1|description1
