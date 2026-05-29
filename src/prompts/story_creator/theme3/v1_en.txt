@@ -59,8 +59,20 @@ Return ONLY one valid JSON object in this exact structure:
 STORY REQUIREMENTS (story field only):
 
 Structure — never label in story:
-Exposition → Conflict → Rising Action → Climax →
-Falling Action → Resolution → Moral
+Default (all ages): Exposition → Inciting Incident → Rising Action
+→ Climax → Falling Action → Resolution → Moral
+
+For ages 6 and up you MAY use the Fichtean Curve instead — open
+INSIDE a small problem or tension (skip the calm exposition scene)
+and drip in character and setting between 2-3 mini-tension peaks
+that build to the main climax. Pick whichever serves the topic.
+
+You MAY include ONE small sub-arc inside the rising action — a
+side character or smaller problem that mirrors the main lesson and
+resolves before the main climax. Keep total length within 480-520
+words.
+
+Each beat should be visible in actions and dialogue, never labelled.
 
 Source: Every story must be inspired by one of these:
 - Nature — a specific observable natural behaviour proves the lesson
