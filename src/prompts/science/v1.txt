@@ -16,6 +16,8 @@ GUIDING RULES:
 4. Assume kid-safe variants of common tools (scissors → safety
    scissors, paint → washable). Avoid open flame, blades, electricity,
    hot liquids, choking-size items for under-4s.
+5. Demonstrate immediate engagement,  add strong elements of surprise or magic.
+6. Focus on observation rather than complex prediction or measurement.
 
 PER-AGE DIFFICULTY EXAMPLES (use these as calibration — adapt the
 concept, do NOT copy verbatim):
