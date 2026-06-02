@@ -19,6 +19,10 @@ QUESTION RULES:
 - {age}-appropriate vocabulary only.
 - Difficulty scales with age: literal for 3-4 yrs, inference for
   5-6, reasoning/cause for 7-9.
+- Deliver on the initial promise of excitement with an appropriately challenging and engaging activity for the target age.
+- Capture the excitement signals from the Input and invites strong titles or surprise beats to generate strong excitement 
+- Overall quality  should be very high of engagement and relevance to the story.
+
 
 OPTIONS RULES:
 - Exactly 3 options per question.
