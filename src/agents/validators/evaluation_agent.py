@@ -134,6 +134,37 @@ _ACTIVITY_CRITERIA_PER_ACTIVITY: dict[str, str] = {
     ),
 }
 
+# MCQ engagability is judged on a different scale than hands-on activities.
+# An MCQ is a guessing-game, not a craft/experiment — it CANNOT have a physical
+# outcome to "show off" or a hands-on "magic beat", so the generic activity
+# rubric structurally caps a perfectly good quiz around 0.4. This rubric judges
+# excitement in terms a quiz CAN actually deliver: playful framing, a choice or
+# prediction the child makes, and a surprising reveal in the answer/fun-fact.
+# Do NOT penalize an MCQ merely for being a multiple-choice format.
+_MCQ_ENGAGABILITY_CRITERIA: str = (
+    "Would a child of the specified age WANT to play this quiz? This is a "
+    "multiple-choice guessing-game — judge it as a GAME, not as a craft or "
+    "experiment. Do NOT penalize it for being an MCQ, for lacking a physical "
+    "product, or for not being hands-on; those are not possible in this format. "
+    "Two things matter: playful excitement AND age-appropriate challenge.\n"
+    "EXCITEMENT (quiz-appropriate signals) — the child wants to shout the answer. "
+    "Look for: a playful question frame that invites them in ('Quick, can you "
+    "guess...', 'Be a detective...', 'Uh oh! Why...'), at least one question that "
+    "asks the child to make a CHOICE or PREDICTION ('What would YOU do?'), a "
+    "surprise or 'whoa, really?' reveal in an answer or fun_fact, and a fun tone "
+    "rather than a flat schoolbook 'What did X do?'. If most questions have these, "
+    "excitement is PRESENT.\n"
+    "CHALLENGE — questions must STRETCH the child for their stated age, not be "
+    "answerable from the question wording alone. 3-4: active guessing/prediction. "
+    "5-6: light inference (why / predict-then-check). 7-9: real reasoning or "
+    "cause-and-effect. Plausible (not silly) wrong options that make the child "
+    "pause count as challenge.\n"
+    "Score 0.9+ when playful framing AND well-tuned challenge are both clearly "
+    "present. Score 0.6-0.8 when the quiz is clearly playful and age-tuned even if "
+    "not every beat lands. Score below 0.6 only when the quiz is flat, schoolbook-"
+    "dry, OR mis-tuned for the age."
+)
+
 # Shared criteria — judged ONCE on a concatenated block of all activities and
 # the same score is broadcast to every per-activity verdict.
 _ACTIVITY_CRITERIA_SHARED: dict[str, str] = {
@@ -1466,6 +1497,13 @@ class EvaluationAgent:
         test_case = LLMTestCase(input=reference_input, actual_output=activity_text)
         sem = _get_eval_semaphore()
 
+        # MCQ is a quiz, not a hands-on craft — judge engagability on a
+        # format-appropriate rubric so a well-framed quiz isn't capped by
+        # signals (physical product, hands-on magic beat) it can never have.
+        per_activity_criteria = dict(_ACTIVITY_CRITERIA_PER_ACTIVITY)
+        if activity_type == "mcq":
+            per_activity_criteria["engagability"] = _MCQ_ENGAGABILITY_CRITERIA
+
         results = await asyncio.gather(
             *[
                 _run_geval_with_retry(
@@ -1480,7 +1518,7 @@ class EvaluationAgent:
                     # 503s under the burst.
                     eval_model=_GEMINI_ACTIVITIES_EVAL_MODEL,
                 )
-                for n, c in _ACTIVITY_CRITERIA_PER_ACTIVITY.items()
+                for n, c in per_activity_criteria.items()
             ]
         )
         metric_scores = {n: s for n, s, _ in results}

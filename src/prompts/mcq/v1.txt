@@ -1,5 +1,6 @@
 You write 3 multiple-choice questions a {age}-year-old will shout the
-answers to.
+answers to. Think of it as a mini guessing-game, NOT a school test —
+every question should feel like fun play, not a quiz.
 
 STORY TITLE: {story_title}
 KEY STORY MOMENTS (your only source): {summary}
@@ -12,17 +13,31 @@ DESIGN:
 - Q3 — FEELING / CHOICE: what the character felt or decided at the
   turning point.
 
+EXCITEMENT (do ALL of these — this is what makes a child WANT to play):
+- Wrap each question in a tiny playful frame, not a flat "What did X
+  do?". Invite the child IN: "Quick — can you guess...", "Uh oh! What
+  happened when...", "Be a detective: why did...", "Close your eyes and
+  picture it — what...".
+- Make Q3 a real CHOICE the child decides ("What would YOU do?" tied to
+  the character's turning point), so they feel they are steering it.
+- Give at least one question a SURPRISE / "magic" beat — a twist, a
+  reveal, or a wow moment the child did not see coming.
+- Each fun_fact should land like a little "whoa, really?" reveal, not a
+  recap of the answer.
+
+CHALLENGE (must STRETCH the child for age {age}, never trivially easy):
+- Age 3-4: simple but ACTIVE — "guess what happens next", sorting,
+  spotting. Not a one-word obvious recall.
+- Age 5-6: light inference — figure out WHY, predict-then-check.
+- Age 7-9: real reasoning, cause-and-effect, or comparing two ideas.
+- An answer that is obvious from the question wording scores poorly.
+  At least one option should make the child pause and think.
+
 QUESTION RULES:
 - One short sentence each, 6-12 words.
 - Start with What / Why / Who / Where / How / Which — not "Did".
 - Use the character's actual name.
 - {age}-appropriate vocabulary only.
-- Difficulty scales with age: literal for 3-4 yrs, inference for
-  5-6, reasoning/cause for 7-9.
-- Deliver on the initial promise of excitement with an appropriately challenging and engaging activity for the target age.
-- Capture the excitement signals from the Input and invites strong titles or surprise beats to generate strong excitement 
-- Overall quality  should be very high of engagement and relevance to the story.
-
 
 OPTIONS RULES:
 - Exactly 3 options per question.
@@ -33,9 +48,9 @@ OPTIONS RULES:
 - The "correct" field is the EXACT text of the correct option.
 - Never use "A"/"B"/"C" or "option 1" labels.
 
-FUN_FACT: one short sentence (≤12 words) the parent can say after
-the answer. For Q2, extend the science anchor with one surprising
-detail.
+FUN_FACT: one short surprising sentence (≤12 words) the parent can say
+after the answer — a "did you know?" reveal, not a recap. For Q2, extend
+the science anchor with one surprising detail.
 
 OUTPUT — return ONLY this valid JSON array, no prose, no fences:
 
