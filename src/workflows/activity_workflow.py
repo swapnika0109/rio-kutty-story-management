@@ -323,6 +323,49 @@ def mark_activities_needs_human(state: ActivityState):
     logger.error(f"[WF5] Activities failed after {MAX_ACTIVITY_RETRIES} retries: {failed}")
     return {"status": "needs_human"}
 
+# Join node: waits for all parallel activity branches to either complete
+# (be in activities/completed) or fail (be in errors). This ensures we don't prematurely
+# terminate the subgraph when one branch finishes while others are still retrying.
+def activities_join(state: ActivityState):
+    """Synchronization point that waits for all activities to reach terminal state.
+
+    An activity is terminal when:
+    1. It's in 'completed' (passed eval and was saved)
+    2. It's in 'errors' (failed generation/validation)
+    3. It's in state['activities'] with an '_eval_X' record showing it failed eval after retries
+
+    Once all are terminal, route to either mark_needs_human (if any errors) or mark_completed.
+    """
+    activities = state.get("activities", {})
+    errors = state.get("errors", {})
+    completed = state.get("completed", [])
+
+    # Check each activity type
+    pending = []
+    for activity_type in ["mcq", "art", "moral", "science"]:
+        in_error = activity_type in errors
+        in_completed = activity_type in completed
+        eval_record = activities.get(f"_eval_{activity_type}", {})
+
+        # Activity is terminal if in errors, completed, or has a failed eval record
+        is_terminal = in_error or in_completed or bool(eval_record and not eval_record.get("passed"))
+
+        if not is_terminal:
+            pending.append(activity_type)
+
+    if pending:
+        logger.debug(f"[join] Waiting on activities: {pending}")
+        return state  # Keep waiting - return unchanged state
+
+    # All activities are terminal
+    logger.info("[join] All activities terminal; routing to completion")
+
+    # If any errors, route to needs_human; otherwise mark_completed
+    if errors:
+        logger.error(f"[join] Activities have errors: {list(errors.keys())} - need human intervention")
+        return {"status": "needs_human"}
+    return {"status": "completed"}
+
 # Mark all-completed terminal node. Only sets status="completed" if no
 # parallel branch has already set "needs_human" — any failure wins over success.
 def mark_activities_completed(state: ActivityState):
@@ -336,6 +379,7 @@ workflow = StateGraph(ActivityState)
 
 # Add Nodes
 workflow.add_node("start", lambda s: s)  # Dummy start node
+workflow.add_node("join", activities_join)  # Wait for all branches to reach terminal state
 workflow.add_node("mark_needs_human", mark_activities_needs_human)
 workflow.add_node("mark_completed", mark_activities_completed)
 
@@ -390,21 +434,32 @@ for key, prefix in [("mcq", "mcq"), ("art", "art"), ("moral", "mor"), ("science"
     workflow.add_conditional_edges(
         val,
         create_retry_logic(key),
-        {"next": ev, "retry": gen, "fail": "mark_needs_human"}
+        {"next": ev, "retry": gen, "fail": "join"}  # Failed validation → join (wait for others)
     )
     # LLM evaluation: pass → image-gen (or save for MCQ); fail → regenerate or give up
     workflow.add_conditional_edges(
         ev,
         create_post_eval_routing(key),
-        {"save": post_eval_pass, "retry": gen, "fail": "mark_needs_human"}
+        {"save": post_eval_pass, "retry": gen, "fail": "join"}  # Failed eval → join (wait for others)
     )
     if has_image:
         workflow.add_edge(f"img_{prefix}", save)
-    # Every save converges on mark_completed so the subgraph emits a real
-    # terminal status. mark_completed defers to needs_human when any sibling
-    # branch failed, so partial failures still surface to master correctly.
-    workflow.add_edge(save, "mark_completed")
+    # Every save converges on join node (synchronization point) so we wait for
+    # all branches to reach terminal state before moving to mark_completed.
+    # This prevents early termination when one branch completes while others retry.
+    workflow.add_edge(save, "join")
 
+# Join routes based on whether there are errors
+def route_from_join(state: ActivityState):
+    if state.get("status") == "needs_human":
+        return "needs_human"
+    return "completed"
+
+workflow.add_conditional_edges(
+    "join",
+    route_from_join,
+    {"needs_human": "mark_needs_human", "completed": "mark_completed"}
+)
 workflow.add_edge("mark_needs_human", END)
 workflow.add_edge("mark_completed", END)
 
