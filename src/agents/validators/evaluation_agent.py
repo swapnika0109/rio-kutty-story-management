@@ -106,6 +106,16 @@ class _GeminiEvalModel(DeepEvalBaseLLM):
         """
         if schema is None:
             return response.text
+
+        # Handle None or empty responses (model overload, no text returned)
+        if response is None or not hasattr(response, 'text'):
+            logger.error("[_coerce] Gemini returned None or invalid response object")
+            raise ValueError("Gemini returned empty response")
+
+        if not response.text or not response.text.strip():
+            logger.error("[_coerce] Gemini returned empty text")
+            raise ValueError("Gemini returned empty text")
+
         # google.genai parses response_schema for us into .parsed; fall back to
         # validating the JSON text if the SDK didn't populate it.
         parsed = getattr(response, "parsed", None)
