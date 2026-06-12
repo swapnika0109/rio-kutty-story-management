@@ -1,0 +1,40 @@
+{
+  "run_id": "20260511_105106",
+  "timestamp": "2026-05-11T10:53:01.947847+00:00",
+  "duration_seconds": 115.151,
+  "results": [
+    {
+      "test_id": "tests/e2e/test_wf2_story.py::TestWF2StoryPersisted::test_wf2_story_persisted[planet_protectors]",
+      "workflow": "WF2",
+      "theme": "planet_protectors",
+      "status": "PASS",
+      "duration_seconds": 33.124,
+      "failure_node": null,
+      "error": null
+    },
+    {
+      "test_id": "tests/e2e/test_wf2_story.py::TestWF2StoryPersisted::test_wf2_story_persisted[mindful]",
+      "workflow": "WF2",
+      "theme": "mindful",
+      "status": "PASS",
+      "duration_seconds": 49.314,
+      "failure_node": null,
+      "error": null
+    },
+    {
+      "test_id": "tests/e2e/test_wf2_story.py::TestWF2StoryPersisted::test_wf2_story_persisted[chill]",
+      "workflow": "WF2",
+      "theme": "chill",
+      "status": "PASS",
+      "duration_seconds": 25.946,
+      "failure_node": null,
+      "error": null
+    }
+  ],
+  "summary": {
+    "total": 3,
+    "passed": 3,
+    "failed": 0,
+    "skipped": 0
+  }
+}

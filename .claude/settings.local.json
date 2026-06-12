@@ -1,0 +1,20 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(pip show *)",
+      "Bash(pip index *)",
+      "Bash(git add *)",
+      "Bash(python -c ' *)",
+      "Bash(python -c \"import ast; [ast.parse\\(open\\(p\\).read\\(\\)\\) for p in ['src/agents/validators/evaluation_agent.py', 'src/agents/story/self_correction_agent.py', 'src/workflows/story_creator_workflow.py']]; print\\('OK'\\)\")",
+      "Bash(python -c \"import ast; [ast.parse\\(open\\(p\\).read\\(\\)\\) for p in ['src/agents/validators/evaluation_agent.py', 'src/workflows/image_workflow.py']]; print\\('OK'\\)\")",
+      "Bash(python -c \"import ast; [ast.parse\\(open\\(p\\).read\\(\\)\\) for p in ['src/agents/validators/evaluation_agent.py', 'src/workflows/audio_workflow.py']]; print\\('OK'\\)\")",
+      "Bash(python -c \"import ast; ast.parse\\(open\\('src/agents/validators/evaluation_agent.py'\\).read\\(\\)\\); print\\('OK'\\)\")",
+      "Bash(python -c \"import ast; [ast.parse\\(open\\(p\\).read\\(\\)\\) for p in ['src/agents/validators/evaluation_agent.py', 'src/workflows/activity_workflow.py']]; print\\('OK'\\)\")",
+      "Bash(python -c \"import ast; ast.parse\\(open\\('src/services/ai_service.py'\\).read\\(\\)\\); print\\('OK'\\)\")",
+      "Bash(python -c \"import ast; ast.parse\\(open\\('src/workflows/activity_workflow.py'\\).read\\(\\)\\); print\\('OK'\\)\")",
+      "Bash(python -c \"import ast; [ast.parse\\(open\\(p\\).read\\(\\)\\) for p in ['src/agents/validators/evaluation_agent.py', 'src/utils/config.py']]; print\\('OK'\\)\")",
+      "Bash(python -c \"import ast; ast.parse\\(open\\('src/agents/validators/evaluation_agent.py'\\).read\\(\\)\\); print\\('parse OK'\\)\")",
+      "Bash(GOOGLE_API_KEY=test_key HF_TOKEN=test_token python -c ' *)"
+    ]
+  }
+}

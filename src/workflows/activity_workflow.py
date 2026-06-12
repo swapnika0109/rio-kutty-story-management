@@ -1,5 +1,4 @@
 from typing import TypedDict, List, Dict, Any, Annotated
-import operator
 import os
 import asyncio
 from langgraph.graph import StateGraph, END
@@ -21,15 +20,18 @@ from ..utils.config import get_settings
 logger = setup_logger(__name__)
 settings = get_settings()
 
-# Import shared reducer — defined once in models.state to avoid duplication
-from ..models.state import merge_dicts
+# Import shared reducers — defined once in models.state to avoid duplication
+from ..models.state import merge_dicts, union_list
 
 # State Definition for WF5 activities subgraph
 class ActivityState(TypedDict):
     # story_id, story_text, age, language are in config.configurable (read-only)
     activities: Annotated[Dict[str, Any], merge_dicts]
     images: Annotated[Dict[str, str], merge_dicts]
-    completed: Annotated[List[str], operator.add]
+    # union_list (not operator.add): activities re-run on Gemini 503s, and a
+    # plain-append accumulator re-added each completed step every retry until the
+    # list hit ~470KB and blew the 1MB Firestore checkpoint limit. Dedup fixes it.
+    completed: Annotated[List[str], union_list]
     errors: Annotated[Dict[str, str], merge_dicts]
     retry_count: Annotated[Dict[str, int], merge_dicts]
     # Subgraph result status reported back to master: "completed" | "needs_human"
@@ -201,34 +203,41 @@ async def image_science_node(state: ActivityState, config: RunnableConfig):
 # --- Save Nodes ---
 async def save_mcq_node(state: ActivityState, config: RunnableConfig):
     db_data = unpack_config(state, config)
+    result = {}
     if "mcq" in state.get("activities", {}):
         data = state["activities"]["mcq"]
         logger.info(f"Saving MCQ for story {db_data['story_id']}: {data}")
         await firestore_service.save_activity(db_data["story_id"], "mcq", data)
-    return {}
+        result["completed"] = state.get("completed", []) + ["mcq"]
+    return result
 
 async def save_art_node(state: ActivityState, config: RunnableConfig):
     # NOTE: image is already a GCS filename string by this point — the activity
     # agents upload during generation so raw PNG bytes never live in state.
     db_data = unpack_config(state, config)
+    result = {}
     if "art" in state.get("activities", {}):
         data = state["activities"]["art"]
         payload = {"items": data}
         await firestore_service.save_activity(db_data["story_id"], "art", payload)
-    return {}
+        result["completed"] = state.get("completed", []) + ["art"]
+    return result
 
 
 async def save_science_node(state: ActivityState, config: RunnableConfig):
     db_data = unpack_config(state, config)
+    result = {}
     if "science" in state.get("activities", {}):
         data = state["activities"]["science"][0]
         payload = {**data} if isinstance(data, dict) else {"items": data}
         await firestore_service.save_activity(db_data["story_id"], "science", payload)
-    return {}
+        result["completed"] = state.get("completed", []) + ["science"]
+    return result
 
 
 async def save_moral_node(state: ActivityState, config: RunnableConfig):
     db_data = unpack_config(state, config)
+    result = {}
     if "moral" in state.get("activities", {}):
         data_list = state["activities"]["moral"]
         payloads = [
@@ -236,7 +245,8 @@ async def save_moral_node(state: ActivityState, config: RunnableConfig):
             for data in data_list
         ]
         await firestore_service.save_activity(db_data["story_id"], "moral", payloads)
-    return {}
+        result["completed"] = state.get("completed", []) + ["moral"]
+    return result
 
 # --- Routing Logic ---
 # Max retries aligned with PARALLEL_WORKFLOW_MAX_RETRIES (4) so master can

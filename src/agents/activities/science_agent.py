@@ -65,10 +65,13 @@ class ScienceAgent:
             science_data = json.loads(cleaned_text)
             # Image generation is deferred to a post-evaluation node so we don't
             # burn FLUX credits on activities that fail eval and get regenerated.
+            # NOTE: Don't add to "completed" here — only the save node should do that
+            # after evaluation passes. The workflow uses "completed" to track which
+            # activities have successfully passed eval, so marking completed at generation
+            # breaks the retry-on-eval-fail logic.
             return {
                 "activity_type": "science",
-                "activities": {**state.get("activities", {}), "science": science_data},
-                "completed": state.get("completed", []) + ["science"]
+                "activities": {**state.get("activities", {}), "science": science_data}
             }
         except Exception as e:
             logger.error(f"Science based activities generation failed: {str(e)}")

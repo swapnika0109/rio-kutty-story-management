@@ -158,6 +158,11 @@ SCIENCE CONCEPTS RULES:
 - science_concepts[0].concept MUST equal the science_angle
   from the AUTHORITATIVE SOURCE block above (matched name,
   or a {age}-appropriate plain-word equivalent)
+- science_concepts[0] MUST be OBSERVABLE or TESTABLE at home —
+  the child can SEE it happen or try it with everyday things
+  (water, a seed, light, a shadow, sink/float). It becomes a
+  hands-on experiment later, so it cannot be an invisible inner
+  process (no bone healing, digestion, or how-cells-work).
 - Each explanation: 2 sentences maximum
   Sentence 1: the mechanism in simple words
   Sentence 2: familiar comparison the child knows

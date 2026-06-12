@@ -1,63 +1,35 @@
-You design ONE home science experiment for a {age}-year-old.
+Design ONE simple at-home science experiment for a {age}-year-old, born from this story.
 
-STORY TITLE: {story_title}
-STORY SCIENCE CONCEPTS: {story}
-SCIENCE ANCHOR (the concept to teach): {science_angle}
+STORY: {story_title}
+STORY SCIENCE: {story}
+CONCEPT TO TEACH: {science_angle}
 
-GUIDING RULES:
-1. The experiment teaches the science anchor — a REAL mechanism the
-   child observes (not a craft, not story re-enactment, not breathing).
-   Pick a different angle from the moral activity, which handles the
-   story's emotional lesson. Science handles HOW the world works.
-2. Difficulty MUST match the age. Easy for the young, real challenge
-   for older kids. See per-age examples below.
-3. Instructions are crisp numbered steps — one action per step. NOT
-   storytelling prose. A parent reads them like a recipe.
-4. Assume kid-safe variants of common tools (scissors → safety
-   scissors, paint → washable). Avoid open flame, blades, electricity,
-   hot liquids, choking-size items for under-4s.
-5. Demonstrate immediate engagement,  add strong elements of surprise or magic.
-6. Focus on observation rather than complex prediction or measurement.
+WHAT MAKES A GOOD ONE:
+- It teaches HOW the world works (a real phenomenon) — NOT the story's life lesson. That is the moral activity's job; keep these two separate and never overlap.
+- It grows out of the story — use a character, the storyline, or an element from it (water, a seed, light, a shadow, wind...).
+- It's a real experiment the child DOES with home things and watches something happen.
+- It answers what / why / how / when about that element: what it is, why it happens, how it works, when we see or use it.
+- Difficulty fits the age (see examples). Kid-safe tools only (safety scissors, washable paint). No flame, blades, electricity, hot liquids, or choking-size parts for under-4s.
+- Use eco-friendly materials easily found or prepared at home (water, paper, a seed, leaves, an old cup, cardboard) — nothing a family would have to buy specially.
 
-PER-AGE DIFFICULTY EXAMPLES (use these as calibration — adapt the
-concept, do NOT copy verbatim):
-- 3-4 yrs: place dot stickers on circles with EYES CLOSED, then
-  open and see how close — teaches imagination/mental mapping.
-- 4-5 yrs: draw the target object while looking only at a model,
-  not your hand — teaches visual-motor mapping.
-- 5-6 yrs: predict-then-test which household items float / how
-  shadows shrink as the lamp moves closer.
-- 6-7 yrs: shine a torch through coloured cellophane to mix light
-  colours, OR build a periscope from two mirrors — teaches how
-  eyes and light work.
-- 7-8 yrs: build a simple catapult or rolled-paper "ball" and aim
-  it at a target; measure misses and adjust — teaches projectile
-  aim and iteration.
-- 8-9 yrs+: design a fair test (one variable at a time) — measure
-  light angle vs shadow length, or build a balloon-powered car and
-  vary the balloon size to compare distance.
+PER-AGE EXAMPLES (match the level — note how each age does MORE than the one below: just watch → predict → compare two → change one thing → measure & conclude. Invent your own from the story):
+- 3-4: Drop a stone and a leaf in water — watch one sink, one float. Just watch what happens. Teaches that some things sink and some float.
+- 4-5: Before dropping each item, guess "sink or float?", then test it. Shows that we can predict and check.
+- 5-6: Put a flower's stem in coloured water overnight — next day see the petals change colour. Shows how plants drink water up.
+- 6-7: Leave one wet cloth in sun and one in shade — a few hours later feel which dried more. Compares two conditions to show the sun dries water (evaporation).
+- 7-8: Roll the same ball down a ramp at a low and a high height — measure with steps how far it rolls each time. Changes one thing (height) and measures the effect.
+- 8-9+: Plant 3 seeds — water all, but give each different light (sun, shade, dark cupboard). Check daily for a week and record which grows best. A fair test with measurement and a written conclusion.
 
-STYLE:
-- Title: 3-6 words, names the experiment plainly.
-- "What it Teaches": 2-3 short sentences naming the anchor concept
-  and one familiar comparison. No story re-tell.
-- Steps: 4-6 numbered actions. Each step is ONE action. Include a
-  PREDICT step before the OBSERVE step.
-
-OUTPUT — return ONLY this valid JSON array (one item), no prose:
+OUTPUT — return ONLY this JSON array (one item), no other text:
 
 [{
     "title": "<3-6 word experiment name>",
-    "age_appropriateness": "<1 short sentence — why a {age}-year-old can do this>",
-    "What it Teaches": "<2-3 short sentences — the science anchor + a familiar comparison>",
-    "materials": ["<item 1>", "<item 2>", "<3-5 common items>"],
-    "Instructions": ["<step 1>", "<step 2>", "<step 3>", "<step 4>", "<step 5>"],
-    "image_generation_prompt": "<English only — top-down photo of the finished setup, colours and materials shown>"
+    "age_appropriateness": "<1 sentence — why a {age}-year-old can do this>",
+    "What it Teaches": "<2-3 short sentences — what the element is and why/how/when it works, with one familiar comparison>",
+    "materials": ["<common home item>", "<3-5 items total>"],
+    "Instructions": ["<step 1: one action>", "<step 2>", "<step 3>", "<4-6 clear steps>"],
+    "image_generation_prompt": "<English only — top-down photo of the finished setup showing the materials>"
 }]
 
-LANGUAGE: title, age_appropriateness, What it Teaches, materials,
-Instructions → write in {language}. image_generation_prompt → English.
-Sentence length: 3-4 yrs max 10 words/sentence; 5-6 yrs max 14; older
-ages may be slightly longer.
-
-Return ONLY the JSON array.
+LANGUAGE: write title, age_appropriateness, What it Teaches, materials, Instructions in {language}; image_generation_prompt in English.
+Sentence length: ages 3-4 ≤10 words; 5-6 ≤14; older may be a little longer.

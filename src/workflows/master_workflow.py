@@ -189,6 +189,52 @@ def _publish_hitl_notification(story_id: str, failed_workflows: list[dict], phas
         logger.error(f"[Master] Failed to publish HITL notification: {e}")
 
 
+def _theme_of(state: MasterWorkflowState, config: RunnableConfig) -> str:
+    """Theme for the story doc — config wins, story dict is the fallback."""
+    cfg = config.get("configurable", {})
+    return cfg.get("theme") or (state.get("story") or {}).get("theme") or "theme1"
+
+
+# Human-readable labels for each workflow id, used when building the
+# incomplete_reason persisted on the story doc.
+_WF_LABEL = {"wf3": "image", "wf4": "audio", "wf5": "activities"}
+
+
+def _incomplete_reason(statuses: dict, errors: dict) -> str | None:
+    """Builds a reason string from any workflow that did not complete.
+
+    Returns None when every known workflow completed (story is whole).
+    A workflow counts as incomplete when its status is anything other than
+    'completed' or 'skipped' (an admin 'skip'/'override' is a deliberate
+    accept-as-is, not an incomplete failure).
+    """
+    parts = []
+    for wf_id, label in _WF_LABEL.items():
+        status = statuses.get(wf_id)
+        if status in (None, "completed", "skipped"):
+            continue
+        err = errors.get(wf_id)
+        parts.append(f"{label} not generated ({status})" + (f": {err}" if err else ""))
+    return "; ".join(parts) if parts else None
+
+
+async def _mark_story_pending(
+    state: MasterWorkflowState, config: RunnableConfig, statuses: dict
+) -> None:
+    """Persist status='pending' + reason on the story doc. Best-effort: a
+    Firestore hiccup here must not break the pipeline's HITL flow."""
+    story_id = state.get("story_id")
+    if not story_id:
+        return
+    reason = _incomplete_reason(statuses, state.get("errors", {})) or "incomplete"
+    try:
+        await firestore.update_story_status(
+            story_id, _theme_of(state, config), "pending", reason
+        )
+    except Exception as e:
+        logger.error(f"[Master] Could not mark story {story_id} pending: {e}")
+
+
 def _collect_thread_ids(story_id: str) -> list[str]:
     """Returns all sub-thread IDs for checkpoint cleanup."""
     return [
@@ -292,6 +338,11 @@ async def collect_media_node(state: MasterWorkflowState, config: RunnableConfig)
 
     story_id = state.get("story_id")
     logger.warning(f"[Master] Media HITL: {[f['workflow_id'] for f in failed]}")
+
+    # Record the incomplete state on the story doc immediately so the DB reflects
+    # reality even while the pipeline is paused waiting for an admin decision.
+    await _mark_story_pending(state, config, statuses)
+
     _publish_hitl_notification(story_id, failed, phase="media")
 
     decision = interrupt({
@@ -390,6 +441,10 @@ async def collect_activities_node(state: MasterWorkflowState, config: RunnableCo
     story_id = state.get("story_id")
     failed   = [{"workflow_id": "wf5", "error": state.get("errors", {}).get("wf5", "unknown")}]
     logger.warning(f"[Master] Activities HITL for story_id={story_id}")
+
+    # Persist the incomplete state (activities not generated) before pausing.
+    await _mark_story_pending(state, config, statuses)
+
     _publish_hitl_notification(story_id, failed, phase="activities")
 
     decision = interrupt({
@@ -429,6 +484,19 @@ async def finalize_node(state: MasterWorkflowState, config: RunnableConfig) -> d
     story_id = state.get("story_id")
     statuses = state.get("workflow_statuses", {})
     logger.info(f"[Master] Pipeline finalized for story_id={story_id}: {statuses}")
+
+    # Record the final completion status on the story doc. If any workflow did
+    # not produce its output (and wasn't deliberately skipped by an admin), the
+    # story is 'pending' with a reason; otherwise it's 'completed'.
+    if story_id:
+        reason = _incomplete_reason(statuses, state.get("errors", {}))
+        final_status = "pending" if reason else "completed"
+        try:
+            await firestore.update_story_status(
+                story_id, _theme_of(state, config), final_status, reason
+            )
+        except Exception as e:
+            logger.error(f"[Master] Could not write final story status: {e}")
 
     # Clean up all checkpoints for this story's threads
     thread_ids = _collect_thread_ids(story_id)

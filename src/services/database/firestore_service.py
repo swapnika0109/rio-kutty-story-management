@@ -257,6 +257,12 @@ class FirestoreService:
                 "theme":      theme,
                 "title":      story.get("title", ""),
                 "description": story.get("description", story.get("story_seed", "")),
+                # Story text exists, but media + activities are produced later by
+                # the master pipeline. Start as 'pending' so a polling client never
+                # sees a story with no status; master.finalize flips it to
+                # 'completed' once image, audio, and activities are all generated.
+                "status":            story.get("status", "pending"),
+                "incomplete_reason": "media and activities not yet generated",
                 "updated_at": firestore.SERVER_TIMESTAMP,
             }
             if topics_id:
@@ -310,6 +316,41 @@ class FirestoreService:
             logger.info(f"[Firestore] audio_url saved on {col}/{story_id}")
         except Exception as e:
             logger.error(f"save_story_audio failed: {e}")
+            raise
+
+    async def update_story_status(
+        self,
+        story_id: str,
+        theme: str,
+        status: str,
+        reason: str | None = None,
+    ) -> None:
+        """Sets the story's pipeline completion status (+ optional reason) on the
+        story doc. Used to mark a story 'pending' (incomplete) when image, audio,
+        or activities could not be generated, and 'completed' when the full
+        pipeline succeeds.
+
+        When status != 'pending' the incomplete_reason field is cleared so a
+        previously-failed story doesn't keep a stale reason after a successful
+        resume.
+        """
+        try:
+            col = self._story_collection(theme)
+            update: dict = {
+                "status":     status,
+                "updated_at": firestore.SERVER_TIMESTAMP,
+            }
+            if status == "pending":
+                update["incomplete_reason"] = reason or "unspecified"
+            else:
+                update["incomplete_reason"] = firestore.DELETE_FIELD
+            self.db.collection(col).document(story_id).set(update, merge=True)
+            logger.info(
+                f"[Firestore] story status set to '{status}' on {col}/{story_id}"
+                + (f" (reason: {reason})" if status == "pending" and reason else "")
+            )
+        except Exception as e:
+            logger.error(f"update_story_status failed: {e}")
             raise
 
     # ------------------------------------------------------------------

@@ -61,9 +61,12 @@ class MoralAgent:
             activity_data = json.loads(cleaned_text)
             # Image generation is deferred to a post-evaluation node so we don't
             # burn FLUX credits on activities that fail eval and get regenerated.
+            # NOTE: Don't add to "completed" here — only the save node should do that
+            # after evaluation passes. The workflow uses "completed" to track which
+            # activities have successfully passed eval, so marking completed at generation
+            # breaks the retry-on-eval-fail logic.
             return {
-                "activities": {**state.get("activities", {}), "moral": activity_data},
-                "completed": state.get("completed", []) + ["moral"]
+                "activities": {**state.get("activities", {}), "moral": activity_data}
             }
         except Exception as e:
             logger.error(f"Moral Agent failed: {e}")

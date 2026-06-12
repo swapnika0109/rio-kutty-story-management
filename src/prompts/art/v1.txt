@@ -1,49 +1,25 @@
-You design ONE 15-20 minute craft for a {age}-year-old that ties to
-the story and produces something they can hold, wear, or play with.
+Design ONE draw-and-paint activity for a {age}-year-old, based on this story.
 
-STORY TITLE: {story_title}
-ART DIRECTION: {summary}
+STORY: {story_title}
+ART DIRECTION (from story): {summary}
 DAILY-LIFE LINK: {daily_life_application}
 
-GUIDING RULES:
-1. The craft makes a 3D version of one concrete object or character
-   from THIS story (named in step 1). Not plain "drawing" or
-   "colouring" — use paper, cardboard, leaves, twigs, fabric, etc.
-2. The finished craft has a ROLE: child wears it, waves it, hides
-   it, gifts it, or uses it to play out a scene. Not a flat picture
-   for a folder.
-3. Difficulty scales with age. 3-4 yrs: tear/stick. 5-6 yrs: fold +
-   simple cut. 7-9 yrs: multi-step assembly with measuring or
-   layering.
-4. Instructions are crisp numbered steps — one action per step. NOT
-   storytelling prose.
-5. Assume kid-safe variants of common tools (scissors → safety
-   scissors, glue → glue stick, paint → washable non-toxic). Avoid
-   open flame, blades, electricity, hot liquids, choking-size items
-   for under-4s.
-6. The activity should strictly embodying the 
-  'play/choice/discovery' or 'magic/surprise' elements that would 
-  make it highly engaging and it should have stronger excitement elements. 
+WHAT MAKES A GOOD ONE:
+- It is purely DRAWING and PAINTING (or colouring) — NOT a build/DIY model. Building things is the moral activity's job; keep these separate and never overlap.
+- The child draws/paints ONE character or element from THIS story (name it in step 1).
+- Steps tell the child exactly what to draw and colour, in order.
+- Difficulty fits the age. 3-4: trace/colour big simple shapes. 5-6: draw a few shapes and paint them. 7-9: add details, background, and shading.
+- Eco-friendly, home-found materials only: scrap/old paper, pencils, crayons, washable non-toxic paint, leaves or flower petals for natural colour, a twig brush. Kid-safe tools (safety scissors). No flame, blades, or choking-size parts for under-4s.
 
-STYLE:
-- Title: 2-5 words, playful, names the story character or object.
-- "age_appropriateness": 1 short sentence — why this age can do
-  it AND will enjoy the result.
-- Steps: 3-5 numbered actions. Each step is ONE concrete action.
-
-OUTPUT — return ONLY this valid JSON, no prose:
+OUTPUT — return ONLY this JSON object, no other text:
 
 {
-    "title": "<2-5 word activity name>",
-    "age_appropriateness": "<1 short sentence>",
-    "materials": ["<item 1>", "<item 2>", "<3-5 common items>"],
-    "steps": ["<step 1>", "<step 2>", "<step 3>"],
-    "image_generation_prompt": "<English only — top-down photo of the finished craft, colours and textures shown>"
+    "title": "<2-5 words, playful, names the story character/element>",
+    "age_appropriateness": "<1 sentence — why a {age}-year-old can do and enjoy this>",
+    "materials": ["<eco-friendly home item>", "<3-5 items total>"],
+    "steps": ["<step 1: what to draw>", "<step 2>", "<3-5 clear steps ending in painting/colouring>"],
+    "image_generation_prompt": "<English only — top-down photo of the finished drawing/painting, colours shown>"
 }
 
-LANGUAGE: title, age_appropriateness, materials, steps → write in
-{language}. image_generation_prompt → English. Sentence length:
-3-4 yrs max 10 words/sentence; 5-6 yrs max 14; older ages may be
-slightly longer.
-
-Return ONLY the JSON.
+LANGUAGE: write title, age_appropriateness, materials, steps in {language}; image_generation_prompt in English.
+Sentence length: ages 3-4 ≤10 words; 5-6 ≤14; older may be a little longer.
