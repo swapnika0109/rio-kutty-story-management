@@ -23,6 +23,13 @@ settings = get_settings()
 # Import shared reducers — defined once in models.state to avoid duplication
 from ..models.state import merge_dicts, union_list
 
+# Reducer for status: prefer "needs_human" over "completed" (error takes precedence)
+def status_reducer(left: str, right: str) -> str:
+    """Status reducer: "needs_human" takes precedence over "completed"."""
+    if left == "needs_human" or right == "needs_human":
+        return "needs_human"
+    return right or left
+
 # State Definition for WF5 activities subgraph
 class ActivityState(TypedDict):
     # story_id, story_text, age, language are in config.configurable (read-only)
@@ -35,7 +42,8 @@ class ActivityState(TypedDict):
     errors: Annotated[Dict[str, str], merge_dicts]
     retry_count: Annotated[Dict[str, int], merge_dicts]
     # Subgraph result status reported back to master: "completed" | "needs_human"
-    status: str
+    # Uses status_reducer so concurrent writes prefer "needs_human" (error state)
+    status: Annotated[str, status_reducer]
 
 # Initialize Components
 mcq_agent = MCQAgent(prompt_version=settings.MCQ_PROMPT_VERSION)
