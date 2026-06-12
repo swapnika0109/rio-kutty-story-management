@@ -120,23 +120,49 @@ class _GeminiEvalModel(DeepEvalBaseLLM):
         # validating the JSON text if the SDK didn't populate it.
         parsed = getattr(response, "parsed", None)
         if parsed is not None:
-            logger.debug(f"[_coerce] Using response.parsed: {parsed}")
+            logger.info(f"[_coerce] Using response.parsed (Gemini native JSON): {parsed}")
+            # Gemini returns score on 0-1 scale, but DeepEval expects 0-10
+            # (it will normalize by dividing by 10). Scale up to 0-10.
+            if hasattr(parsed, "score"):
+                original_score = parsed.score
+                if isinstance(original_score, (int, float)) and 0.0 <= original_score <= 1.0:
+                    parsed.score = original_score * 10
+                    logger.info(f"[_coerce] Scaled score from {original_score} to {parsed.score} (0-1 → 0-10)")
             return parsed
+
+        # Try direct validation first
         try:
-            logger.debug(f"[_coerce] Validating JSON against schema with fields: {list(schema.model_fields.keys())}")
+            logger.debug(f"[_coerce] Validating JSON against schema fields: {list(schema.model_fields.keys())}")
             result = schema.model_validate_json(response.text)
-            logger.debug(f"[_coerce] Validation succeeded: {result}")
+            logger.info(f"[_coerce] Direct validation succeeded")
             return result
         except Exception as e:
-            # Schema validation failed. Try to detect and fix common issues:
-            # 1. Gemini returns 0-1 score when 0-10 is expected
-            # 2. Score is a string instead of float
-            try:
-                raw_json = json.loads(response.text)
-                if isinstance(raw_json, dict) and "score" in raw_json:
+            logger.debug(f"[_coerce] Direct validation failed: {e}")
+
+        # Schema validation failed. Try to detect and fix common issues:
+        # 1. Gemini returns 0-1 score when 0-10 is expected
+        # 2. Score is a string instead of float
+        # 3. Extra fields in JSON that schema doesn't expect
+        try:
+            raw_json = json.loads(response.text)
+            logger.info(f"[_coerce] Raw JSON parsed: {raw_json}")
+
+            if isinstance(raw_json, dict):
+                # Try to extract and fix score field
+                if "score" in raw_json:
                     score = raw_json["score"]
-                    # If score is on 0-1 scale (all 0-1 floats, or 0.X patterns),
-                    # convert to 0-10 by multiplying by 10
+                    logger.info(f"[_coerce] Found score field: {score} (type: {type(score).__name__})")
+
+                    # Convert string to float if needed
+                    if isinstance(score, str):
+                        try:
+                            score = float(score)
+                            raw_json["score"] = score
+                            logger.info(f"[_coerce] Converted string score to float: {score}")
+                        except ValueError:
+                            logger.error(f"[_coerce] Could not convert string score '{score}' to float")
+
+                    # If score is on 0-1 scale, convert to 0-10
                     if isinstance(score, (int, float)):
                         score_float = float(score)
                         if 0.0 <= score_float <= 1.0:
@@ -144,22 +170,27 @@ class _GeminiEvalModel(DeepEvalBaseLLM):
                                 f"[_coerce] Detected 0-1 score scale {score_float}; converting to 0-10 scale"
                             )
                             raw_json["score"] = score_float * 10
-                    # Try validation again with corrected data
-                    corrected_text = json.dumps(raw_json)
-                    result = schema.model_validate_json(corrected_text)
-                    logger.info(f"[_coerce] Fixed scale mismatch and validated successfully")
-                    return result
-            except (json.JSONDecodeError, TypeError, ValueError) as parse_err:
-                logger.debug(f"[_coerce] Could not auto-fix scale: {parse_err}")
+                            score = score_float * 10
 
-            # If we still can't validate, log the raw response and return it as text
-            # so DeepEval can attempt its own fallback parsing.
-            logger.error(
-                f"[_coerce] Schema validation failed for schema fields {list(schema.model_fields.keys())}. "
-                f"Gemini returned:\n{response.text!r}\n"
-                f"Original error: {e}"
-            )
-            return response.text
+                    logger.info(f"[_coerce] Final score value: {score}")
+
+                # Try validation with potentially fixed data
+                corrected_text = json.dumps(raw_json)
+                result = schema.model_validate_json(corrected_text)
+                logger.info(f"[_coerce] Fixed JSON and validated successfully: {result}")
+                return result
+        except json.JSONDecodeError as parse_err:
+            logger.error(f"[_coerce] Could not parse JSON from Gemini: {parse_err}")
+            logger.error(f"[_coerce] Raw text was: {response.text!r}")
+        except Exception as parse_err:
+            logger.error(f"[_coerce] Error fixing JSON: {parse_err}")
+
+        # If we still can't validate, return raw text and let DeepEval handle it
+        logger.error(
+            f"[_coerce] All validation attempts failed for schema {list(schema.model_fields.keys())}. "
+            f"Gemini returned:\n{response.text!r}"
+        )
+        return response.text
 
     def get_model_name(self) -> str:
         return self._model_name
