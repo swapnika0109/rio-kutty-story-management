@@ -29,6 +29,7 @@ from deepeval.metrics import GEval
 from deepeval.models.base_model import DeepEvalBaseLLM
 from deepeval.test_case import LLMTestCase, LLMTestCaseParams
 from google import genai
+from google.genai import types as genai_types
 
 from ...utils.logger import setup_logger
 from ...utils.config import get_settings
@@ -58,21 +59,97 @@ class _GeminiEvalModel(DeepEvalBaseLLM):
     def load_model(self):
         return self._client
 
-    def generate(self, prompt: str, *args, **kwargs) -> str:
-        """Sync — called by metric.measure() when run inside a thread executor."""
-        response = self._client.models.generate_content(
-            model=self._model_name,
-            contents=prompt,
-        )
-        return response.text
+    def generate(self, prompt: str, schema=None, *args, **kwargs):
+        """Sync — called by metric.measure() when run inside a thread executor.
 
-    async def a_generate(self, prompt: str, *args, **kwargs) -> str:
-        """Async — called by metric.a_measure() when awaited directly."""
-        response = await self._client.aio.models.generate_content(
-            model=self._model_name,
-            contents=prompt,
+        DeepEval 4.x GEval passes a Pydantic `schema` and expects a populated
+        instance of it back (so it can read .score/.reason reliably). If we
+        ignore the schema and return free-text, DeepEval can't parse a score and
+        falls back to a degraded default (~0.1) even when the judge's prose says
+        the content is perfectly fine — a false hard-metric failure. So when a
+        schema is given, constrain Gemini to JSON and return the parsed model.
+        """
+        config = self._json_config(schema)
+        if schema:
+            logger.debug(f"[_GeminiEvalModel.generate] Schema fields: {schema.model_fields.keys() if hasattr(schema, 'model_fields') else '?'}")
+        response = self._client.models.generate_content(
+            model=self._model_name, contents=prompt, config=config,
         )
-        return response.text
+        return self._coerce(response, schema)
+
+    async def a_generate(self, prompt: str, schema=None, *args, **kwargs):
+        """Async — called by metric.a_measure() when awaited directly."""
+        config = self._json_config(schema)
+        if schema:
+            logger.debug(f"[_GeminiEvalModel.a_generate] Schema fields: {schema.model_fields.keys() if hasattr(schema, 'model_fields') else '?'}")
+        response = await self._client.aio.models.generate_content(
+            model=self._model_name, contents=prompt, config=config,
+        )
+        return self._coerce(response, schema)
+
+    @staticmethod
+    def _json_config(schema):
+        """Constrain Gemini to JSON matching `schema` when one is supplied."""
+        if schema is None:
+            return None
+        return genai_types.GenerateContentConfig(
+            response_mime_type="application/json",
+            response_schema=schema,
+        )
+
+    @staticmethod
+    def _coerce(response, schema):
+        """Return a schema instance when DeepEval asked for one, else raw text.
+
+        Handles common scale mismatches: if Gemini returns a 0-1 score when a 0-10
+        scale is expected, automatically converts it.
+        """
+        if schema is None:
+            return response.text
+        # google.genai parses response_schema for us into .parsed; fall back to
+        # validating the JSON text if the SDK didn't populate it.
+        parsed = getattr(response, "parsed", None)
+        if parsed is not None:
+            logger.debug(f"[_coerce] Using response.parsed: {parsed}")
+            return parsed
+        try:
+            logger.debug(f"[_coerce] Validating JSON against schema with fields: {list(schema.model_fields.keys())}")
+            result = schema.model_validate_json(response.text)
+            logger.debug(f"[_coerce] Validation succeeded: {result}")
+            return result
+        except Exception as e:
+            # Schema validation failed. Try to detect and fix common issues:
+            # 1. Gemini returns 0-1 score when 0-10 is expected
+            # 2. Score is a string instead of float
+            try:
+                raw_json = json.loads(response.text)
+                if isinstance(raw_json, dict) and "score" in raw_json:
+                    score = raw_json["score"]
+                    # If score is on 0-1 scale (all 0-1 floats, or 0.X patterns),
+                    # convert to 0-10 by multiplying by 10
+                    if isinstance(score, (int, float)):
+                        score_float = float(score)
+                        if 0.0 <= score_float <= 1.0:
+                            logger.warning(
+                                f"[_coerce] Detected 0-1 score scale {score_float}; converting to 0-10 scale"
+                            )
+                            raw_json["score"] = score_float * 10
+                    # Try validation again with corrected data
+                    corrected_text = json.dumps(raw_json)
+                    result = schema.model_validate_json(corrected_text)
+                    logger.info(f"[_coerce] Fixed scale mismatch and validated successfully")
+                    return result
+            except (json.JSONDecodeError, TypeError, ValueError) as parse_err:
+                logger.debug(f"[_coerce] Could not auto-fix scale: {parse_err}")
+
+            # If we still can't validate, log the raw response and return it as text
+            # so DeepEval can attempt its own fallback parsing.
+            logger.error(
+                f"[_coerce] Schema validation failed for schema fields {list(schema.model_fields.keys())}. "
+                f"Gemini returned:\n{response.text!r}\n"
+                f"Original error: {e}"
+            )
+            return response.text
 
     def get_model_name(self) -> str:
         return self._model_name
@@ -114,25 +191,59 @@ _DEFAULT_CRITERIA: dict[str, str] = {}
 
 # Per-activity criteria: engagability is judged per activity so the retry loop
 # can target the failing one. non_toxicity is judged once across the bundle.
+# engagability judges CLARITY + CURIOSITY/PURPOSE only — NOT age difficulty.
+# Whether a child of <age> can understand/do it (and tool safety) is judged
+# separately by `age_appropriateness`. Per-type variants below add the purpose
+# each activity must serve.
+_ENGAGABILITY_BASE: str = (
+    "Score two things equally. CLARITY: are the instructions clear, ordered, and "
+    "complete (materials, steps, end result)? CURIOSITY: does it genuinely make "
+    "the child WANT to start — play, choice, discovery, a tangible result, a tie "
+    "to the story? Do NOT judge age difficulty here. 0.9+ if both hold; 0.5-0.7 "
+    "if one; below 0.5 if instructions are confusing AND it's dull."
+)
+
+# science → must build real, observable scientific understanding by doing it.
+_SCIENCE_ENGAGABILITY_CRITERIA: str = (
+    "Score two things equally. CLARITY: are the instructions clear and complete? "
+    "SCIENCE PURPOSE: does DOING this teach a real, observable science concept "
+    "(e.g. seeds need water, ice melts) tied to the story — not a craft with a "
+    "science label? Do NOT judge age difficulty here. 0.9+ if both hold; 0.5-0.7 "
+    "if one; below 0.5 if confusing OR no genuine science learning."
+)
+
+# moral → must make the child understand/feel the story's moral.
+_MORAL_ENGAGABILITY_CRITERIA: str = (
+    "Score two things equally. CLARITY: are the instructions clear and complete? "
+    "MORAL PURPOSE: does doing this make the child understand and feel the story's "
+    "moral (via reflection, role-play, or a choice) — not just name it? Do NOT "
+    "judge age difficulty here. 0.9+ if both hold; 0.5-0.7 if one; below 0.5 if "
+    "confusing OR the moral isn't genuinely conveyed."
+)
+
 _ACTIVITY_CRITERIA_PER_ACTIVITY: dict[str, str] = {
-    "engagability": (
-        "Would a child of the specified age WANT to do this activity? Two things matter "
-        "equally: excitement AND age-appropriate challenge.\n"
-        "EXCITEMENT — the child opens the activity and immediately wants to start. "
-        "Signals: an inviting title, a clear tangible outcome they can show off, a "
-        "moment of play / choice / discovery, a 'magic' or surprise beat.\n"
-        "CHALLENGE — the activity must STRETCH the child for their stated age. A 3-4 "
-        "year-old needs a small, achievable challenge (placing stickers with eyes "
-        "closed, sorting). A 5-6 year-old needs a real puzzle (drawing without looking, "
-        "guessing-then-testing). A 7-8 year-old needs an experiment with measurement, "
-        "construction, or prediction. A 9+ year-old needs reasoning, scaling, or "
-        "engineering. An activity that is trivially easy for the age scores LOW even "
-        "if cute. An activity that is too hard for the age also scores low.\n"
-        "Score 0.9+ when both excitement and well-tuned challenge are clearly present. "
-        "Score 0.5-0.7 when only one is present. Score below 0.5 only when the activity "
-        "is dry AND mis-tuned for the age."
-    ),
+    "engagability": _ENGAGABILITY_BASE,
 }
+
+# Per-type engagability overrides, resolved in _evaluate_one_activity.
+_ENGAGABILITY_BY_TYPE: dict[str, str] = {
+    "science": _SCIENCE_ENGAGABILITY_CRITERIA,
+    "moral":   _MORAL_ENGAGABILITY_CRITERIA,
+    # mcq uses _MCQ_ENGAGABILITY_CRITERIA (defined below); art uses the base.
+}
+
+# age_appropriateness (LLM): can a child of <age> actually DO this activity?
+# Distinct from engagability (which judges clarity/curiosity). A cheap Python
+# vocab check is blended in as a floor — see _evaluate_one_activity.
+_AGE_APPROPRIATENESS_CRITERIA: str = (
+    "For a child of the stated age, score: (1) UNDERSTAND — can they grasp the "
+    "concepts, words, and instructions? (2) DOABLE — can they physically complete "
+    "it with normal help, neither too hard nor frustrating? (3) SAFE TOOLS — any "
+    "tools/materials are real-world and child-safe for this age, or use kid-safe "
+    "equivalents (safety scissors, washable non-toxic paint, butter knife). "
+    "Penalize concepts too advanced, steps too hard, or unsafe materials. 0.9+ if "
+    "clearly understandable, doable, and safe; below 0.6 if any of the three fails."
+)
 
 # MCQ engagability is judged on a different scale than hands-on activities.
 # An MCQ is a guessing-game, not a craft/experiment — it CANNOT have a physical
@@ -142,27 +253,18 @@ _ACTIVITY_CRITERIA_PER_ACTIVITY: dict[str, str] = {
 # prediction the child makes, and a surprising reveal in the answer/fun-fact.
 # Do NOT penalize an MCQ merely for being a multiple-choice format.
 _MCQ_ENGAGABILITY_CRITERIA: str = (
-    "Would a child of the specified age WANT to play this quiz? This is a "
-    "multiple-choice guessing-game — judge it as a GAME, not as a craft or "
-    "experiment. Do NOT penalize it for being an MCQ, for lacking a physical "
-    "product, or for not being hands-on; those are not possible in this format. "
-    "Two things matter: playful excitement AND age-appropriate challenge.\n"
-    "EXCITEMENT (quiz-appropriate signals) — the child wants to shout the answer. "
-    "Look for: a playful question frame that invites them in ('Quick, can you "
-    "guess...', 'Be a detective...', 'Uh oh! Why...'), at least one question that "
-    "asks the child to make a CHOICE or PREDICTION ('What would YOU do?'), a "
-    "surprise or 'whoa, really?' reveal in an answer or fun_fact, and a fun tone "
-    "rather than a flat schoolbook 'What did X do?'. If most questions have these, "
-    "excitement is PRESENT.\n"
-    "CHALLENGE — questions must STRETCH the child for their stated age, not be "
-    "answerable from the question wording alone. 3-4: active guessing/prediction. "
-    "5-6: light inference (why / predict-then-check). 7-9: real reasoning or "
-    "cause-and-effect. Plausible (not silly) wrong options that make the child "
-    "pause count as challenge.\n"
-    "Score 0.9+ when playful framing AND well-tuned challenge are both clearly "
-    "present. Score 0.6-0.8 when the quiz is clearly playful and age-tuned even if "
-    "not every beat lands. Score below 0.6 only when the quiz is flat, schoolbook-"
-    "dry, OR mis-tuned for the age."
+    "Judge this multiple-choice quiz as a GAME — do NOT penalize it for being an "
+    "MCQ, lacking a physical product, or not being hands-on. Do NOT judge whether "
+    "the difficulty fits the age; that is scored separately. Score two things: "
+    "CLARITY and PLAYFULNESS.\n"
+    "CLARITY — each question and its options read clearly and unambiguously; the "
+    "child knows what is being asked and there is one clearly best answer.\n"
+    "PLAYFULNESS — the quiz makes the child want to shout the answer: a playful "
+    "frame ('Quick, can you guess...', 'Be a detective...', 'Uh oh!'), at least "
+    "one CHOICE or PREDICTION ('What would YOU do?'), a fun surprise in an answer "
+    "or fun_fact, and a fun tone rather than a flat schoolbook 'What did X do?'.\n"
+    "Score 0.9+ when questions are clear AND playful. 0.5-0.7 when only one holds. "
+    "Below 0.5 only when the quiz is confusingly worded AND flat/schoolbook-dry."
 )
 
 # Shared criteria — judged ONCE on a concatenated block of all activities and
@@ -192,14 +294,16 @@ _ACTIVITY_CRITERIA: dict[str, str] = {
     **_ACTIVITY_CRITERIA_SHARED,
 }
 
-# Both surviving LLM metrics are hard gates. age_appropriateness is Python-
-# computed (no LLM call) and treated as a soft floor.
+# All three are hard gates — an activity must be safe, engaging, AND doable for
+# the age. age_appropriateness is LLM-judged (comprehension + tool safety) and
+# blended with a cheap Python vocab floor; see _evaluate_one_activity.
 _ACTIVITY_HARD_METRICS: dict[str, float] = {
-    "non_toxicity":   0.8,
-    "engagability":   0.6,
+    "non_toxicity":        0.8,
+    "engagability":        0.6,
+    "age_appropriateness": 0.6,
 }
-# age_appropriateness is Python-computed and injected post-gather.
-_ACTIVITY_SOFT_METRICS = ("age_appropriateness",)
+# No soft metrics left for activities — every dimension gates.
+_ACTIVITY_SOFT_METRICS: tuple[str, ...] = ()
 
 
 def _activity_to_text(activity_type: str, data) -> str:
@@ -1448,6 +1552,10 @@ class EvaluationAgent:
         test_case = LLMTestCase(input=reference_input, actual_output=bundled_text)
         sem = _get_eval_semaphore()
 
+        logger.debug(
+            f"[activities/_shared] Running shared metrics on {len(activities)} activities "
+            f"(bundled_text len={len(bundled_text)})"
+        )
         results = await asyncio.gather(
             *[
                 _run_geval_with_retry(
@@ -1464,7 +1572,29 @@ class EvaluationAgent:
             ]
         )
         shared = {n: (s, r) for n, s, r in results}
-        _shared_eval_cache_set(cache_key, shared)
+        logger.info(f"[activities/_shared] Shared metrics complete: {[(n, s) for n, (s, r) in shared.items()]}")
+
+        # Only cache a CLEAN result. A shared metric (e.g. non_toxicity) is judged
+        # once and broadcast to all 4 activities — so caching a bad score poisons
+        # every activity AND survives self-correction retries (same bundle → cache
+        # hit → same bad score), making the failure unrecoverable. A score below
+        # its hard floor here is almost always transient: a 503 skip-as-FAIL (0.0)
+        # or a judge/parse hiccup, NOT genuinely toxic content. Skip caching those
+        # so the next attempt re-judges cleanly. Genuinely toxic content will fail
+        # again on re-judge anyway — we just don't memoize a likely-spurious fail.
+        cacheable = all(
+            score >= _ACTIVITY_HARD_METRICS.get(n, 0.0)
+            for n, (score, _r) in shared.items()
+        )
+        if cacheable:
+            _shared_eval_cache_set(cache_key, shared)
+        else:
+            low = [f"{n}={s:.2f}" for n, (s, _r) in shared.items()
+                   if s < _ACTIVITY_HARD_METRICS.get(n, 0.0)]
+            logger.info(
+                f"[activities/_shared] NOT caching — below-floor shared metric(s): "
+                f"{', '.join(low)} (likely transient; will re-judge next attempt)"
+            )
         return shared
 
     async def _evaluate_one_activity(
@@ -1497,12 +1627,18 @@ class EvaluationAgent:
         test_case = LLMTestCase(input=reference_input, actual_output=activity_text)
         sem = _get_eval_semaphore()
 
-        # MCQ is a quiz, not a hands-on craft — judge engagability on a
-        # format-appropriate rubric so a well-framed quiz isn't capped by
-        # signals (physical product, hands-on magic beat) it can never have.
+        # engagability is purpose-specific per activity type:
+        #   mcq → quiz rubric; science → science-learning; moral → moral-landing;
+        #   art/other → base clarity+curiosity rubric.
         per_activity_criteria = dict(_ACTIVITY_CRITERIA_PER_ACTIVITY)
         if activity_type == "mcq":
             per_activity_criteria["engagability"] = _MCQ_ENGAGABILITY_CRITERIA
+        elif activity_type in _ENGAGABILITY_BY_TYPE:
+            per_activity_criteria["engagability"] = _ENGAGABILITY_BY_TYPE[activity_type]
+
+        # age_appropriateness is LLM-judged here (comprehension + tool safety),
+        # then blended with the cheap Python vocab floor after the gather.
+        per_activity_criteria["age_appropriateness"] = _AGE_APPROPRIATENESS_CRITERIA
 
         results = await asyncio.gather(
             *[
@@ -1529,33 +1665,45 @@ class EvaluationAgent:
             metric_scores[n] = s
             metric_reasons[n] = r
 
-        # Python-checked age appropriateness on the flattened activity text.
-        age_score, age_reason = _python_age_appropriateness(activity_text, age)
-        metric_scores["age_appropriateness"] = age_score
-        metric_reasons["age_appropriateness"] = age_reason
+        # Blend the LLM age judgment with the cheap Python vocab floor: take the
+        # lower of the two so an activity that reads simply but is conceptually
+        # too advanced (or vice-versa) can't pass on one signal alone.
+        llm_age = metric_scores.get("age_appropriateness", 1.0)
+        py_age, py_reason = _python_age_appropriateness(activity_text, age)
+        blended_age = min(llm_age, py_age)
+        metric_scores["age_appropriateness"] = blended_age
+        if blended_age == py_age and py_age < llm_age:
+            metric_reasons["age_appropriateness"] = f"Vocabulary/length floor: {py_reason}"
 
+        # Every activity metric is a hard gate now — an activity passes only when
+        # all of them clear their floor.
         hard_failures = [
             (n, metric_scores[n], floor)
             for n, floor in _ACTIVITY_HARD_METRICS.items()
             if metric_scores.get(n, 0.0) < floor
         ]
-        soft_scores = [metric_scores[n] for n in _ACTIVITY_SOFT_METRICS if n in metric_scores]
-        soft_avg = sum(soft_scores) / len(soft_scores) if soft_scores else 0.0
-        soft_pass = soft_avg >= self.pass_threshold
-        passed = (not hard_failures) and soft_pass
+        passed = not hard_failures
 
+        # Reported score:
+        #   - PASS: average of all metrics (a fair quality summary).
+        #   - FAIL: the WORST failing hard-gate score, NOT the average. Averaging
+        #     would dilute a catastrophic safety failure (e.g. non_toxicity=0.1)
+        #     up to a mild-looking number (0.55), hiding how badly it failed and
+        #     misleading the retry feedback. The lowest failing gate is the
+        #     headline the agent must fix first.
+        all_scores = list(metric_scores.values())
         if hard_failures:
-            reason = "Hard-metric failures: " + ", ".join(
+            overall_score = min(s for _, s, _ in hard_failures)
+            reason = "Metric failures: " + ", ".join(
                 f"{n}={s:.2f}<{floor}" for n, s, floor in hard_failures
             )
-        elif not soft_pass:
-            reason = f"Soft-average {soft_avg:.3f} below threshold {self.pass_threshold}"
         else:
-            reason = f"All hard metrics cleared; soft-avg={soft_avg:.3f}"
+            overall_score = sum(all_scores) / len(all_scores) if all_scores else 0.0
+            reason = f"All metrics cleared; avg={overall_score:.3f}"
 
         return {
             "passed": passed,
-            "score": round(soft_avg, 3),
+            "score": round(overall_score, 3),
             "reason": reason,
             "metrics": metric_scores,
             "metric_reasons": metric_reasons,
