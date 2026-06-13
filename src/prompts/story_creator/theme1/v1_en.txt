@@ -64,6 +64,12 @@ Return ONLY one valid JSON object in this exact structure:
 
 STORY REQUIREMENTS (story field only):
 
+Formatting:
+- Use paragraph breaks (blank lines between paragraphs) for readability
+- Each major story beat should be its own paragraph
+- Dialogue-heavy passages may be grouped, but break into new paragraphs when the speaker or scene changes
+- Aim for 3-6 paragraphs total (not one solid block)
+
 Structure — never label in story:
 Default (all ages): Exposition → Inciting Incident → Rising Action
 → Climax → Falling Action → Resolution → Moral
