@@ -34,7 +34,7 @@ from the topic. You MUST honour all of them:
 Return ONLY one valid JSON object in this exact structure:
 
 {
-  "story": "[480–520 word story — full text]",
+  "story": "[480–520 word story — full text. IMPORTANT: Use \\n\\n (double newlines) to separate paragraphs. Each major story beat should be its own paragraph. Format as: 'Paragraph 1...\\n\\nParagraph 2...\\n\\nParagraph 3...' etc. This creates proper paragraph breaks when displayed.]",
 
   "image_prompt": "[character description] + [what they 
     are doing] + [setting: lamplight, ancient India, 
