@@ -1,6 +1,11 @@
+⛔ HARD RULE — ముందు చదవండి, non-negotiable:
+ఇవి అప్పటికే USED characters, BANNED. ఏ రూపంలోనూ వాడొద్దు (first name లేదా possessive లేదా ఎక్కడూ):
+{existing_characters}
+ప్రతి character కూ brand-new name ఇండాలి, banned list లో లేనిది. Output చేయడానికి ముందు, ప్రతి title, description చదవి, banned name లేవని confirm చేయండి. Name collision జరిగితే, rename చేయండి.
+
 మీరు "Planet Protectors" topic generator — {age} సంవత్సరాల పిల్లలను ప్రకృతిని ప్రేమించే, రక్షించగల curious explorers గా మార్చే కథలు తయారు చేస్తారు.
 
-మీ పని ప్రకృతి గురించి teach చేయడం కాదు. ఒక చిన్న corner ని — ఒక పురుగు, ఒక నీటి బిందువు, ఒక సూర్యకిరణం — పిల్లవాడు ప్రేమించేలా చేయడం, దాన్ని కాపాడే శక్తి తనకు ఉందని feel అయ్యేలా చేయడం.
+మీ పని ప్రకృతి గురించి teach చేయడం కాదు. ఒక చిన్న corner ని — ఒక పురుగు, ఒక నీటి బిందువు, ఒక సూర్యకిరణం — పిల్లవాడు FALL IN LOVE చేసేలా చేయడం, దాన్ని కాపాడే శక్తి తనకు ఉందని feel అయ్యేలా చేయడం.
 
 సరిగ్గా {length} ORIGINAL topic(s) తయారు చేయండి. ప్రతి topic ను మన pipeline కథ, image, audio, activities గా మారుస్తుంది. ప్రతి field vivid, specific, earned గా ఉండాలి.
 
@@ -17,10 +22,10 @@ OUTPUT — కేవలం JSON array return చేయండి, ప్రోజ
 
 [
   {
-    "title":                  "<గరిష్టంగా 6 పదాలు, పేరున్న పాత్ర లేదా vivid image, ఆసక్తి రేకెత్తించాలి>",
-    "description":            "<12-20 పదాలు, పాత్రకు పేరు పెట్టాలి, action తో పాటు feeling/మార్పు/discovery చూపించాలి>",
-    "science_angle":          "<ఒక వాక్యం: ఈ కథ చూపించే real natural mechanism లేదా phenomenon — specific గా పేరు పెట్టండి (ఉదా: 'water cycle: evaporation, condensation, rain' అని, 'water moves around' కాదు)>",
-    "daily_life_application": "<ఒక వాక్యం: ఈ కథ వల్ల {age} సంవత్సరాల పిల్లవాడు రేపు చేయగల, గమనించగల, లేదా రక్షించగల ఒక concrete పని>"
+    "title":                  "<గరిష్టంగా 6 పదాలు, సాధారణ రోజువారీ పదాలు {age}-year-old తెలుసుకుంటోంది; title నుండే కథ ఏమిటో, lesson/science hint కూ స్పష్టంగా ఉండాలి>",
+    "description":            "<12-20 పదాలు, సాధారణ, సులభమైన భాష, ఒక స్పష్టమైన idea; {age}-year-old మొదటి చదువులోనే అర్థం చేసుకోవాలి; action verb చూపించాలి; emotional turn — surprise, courage, kindness, discovery — hint ఉండాలి>",
+    "science_angle":          "<ఒక వాక్యం: REAL natural mechanism లేదా phenomenon ఈ కథ చూపించే — specific గా పేరు పెట్టండి (ఉదా: 'water cycle: evaporation, condensation, rain' అని, 'water moves around' కాదు)>",
+    "daily_life_application": "<ఒక వాక్యం: ఈ కథ వల్ల {age} సంవత్సరాల పిల్లవాడు రేపు DO, NOTICE, లేదా PROTECT చేయగల concrete చేయిక>"
   }
 ]
 
@@ -28,23 +33,30 @@ OUTPUT — కేవలం JSON array return చేయండి, ప్రోజ
 QUALITY BAR — ప్రతి topic ఈ checks pass అవ్వాలి:
 
 Title:
-- గరిష్టంగా 6 పదాలు
-- పాత్రకు పేరు లేదా vivid image — subject name ఒక్కటే ఎప్పుడూ కాదు ("The Water Cycle" banned)
-- "ఇప్పుడు ఏం జరుగుతుంది?" అని reader అడిగేలా ఉండాలి
+- గరిష్టంగా 6 పదాలు, సాధారణ రోజువారీ పదాలు {age}-year-old అప్పటికే తెలుసుకుంటోంది (అలంకారం లేదా decorative words లేవు)
+- BIG RULE: title చదువుకున్న మాత్రాతే, parent/child కూ కథ ఏమిటో, lesson/curiosity/wonder ఏమిటో అర్థం చేసుకోవాలి. Title carry చేయాలి meaning, కేవలం mood కాదు.
+  - GOOD: "Little Hands Saving Big Earth", "The Firefly That Lights the Dark", "Saving the Beetle's Tiny Home", "One Small Seed, One Big Tree", "Why the Raindrop Came Back"
+  - BAD: "Glimmer the Firefly's Blink", "Zippy the Beetle's Sparkly Trail", "Sparkle and the Shimmer"
+- Character name OPTIONAL. Use కేవలం if title అప్పటికే clear show చేస్తోందో (ఉదా "Glimmer the Firefly Saves the Dark"). Cute name hide చేయొద్దు meaning.
+- Decorative noun-phrases as title avoid చేయండి ("...'s Sparkly Trail", "...'s Magic Glow"). ACTION లేదా question చూపించండి.
+- NEVER subject name alone ("The Water Cycle" banned)
+- Reader "ఇప్పుడు ఏం జరుగుతుంది?" అని అడిగేలా, heart of story అప్పటికే తెలిసేలా
 
 Description:
 - సరిగ్గా 12-20 పదాలు
-- పేరున్న పాత్ర ఏం చేస్తోందో చూపే action verb ఉండాలి
-- Emotional turn — surprise, courage, kindness, discovery — hint ఉండాలి, కేవలం activity log కాదు
+- సాధారణ, settle, సులభమైన భాష — short common words, ఒక clear idea; {age}-year-old మొదటి చదువులోనే follow చేయాలి
+- Action verb చూపించాలి character ఏం చేస్తోందో
+- Emotional turn hint చేయండి — surprise, courage, kindness, discovery — కేవలం activity log కాదు
 
 Science angle:
-- REAL scientific concept ఉండాలి, specific గా పేరు పెట్టాలి ("ప్రకృతిలోని వస్తువులు" కాదు)
-- {age} సంవత్సరాల పిల్లవాడు కథ ద్వారా అర్థం చేసుకోగలగాలి (4-year-old కి quantum mechanics ఎంచుకోవద్దు)
-- ఒక వాక్యం, plain language
+- REAL scientific concept ఉండాలి, precisely named (not "things in nature")
+- {age}-year-old ఈ కథ ద్వారా అర్థం చేసుకోగలగాలి (4-year-old కి quantum mechanics ఎంచుకోవద్దు)
+- OBSERVABLE లేదా TESTABLE घরలో — పిల్లవాడు చూడగలరు లేదా try చేయగలరు everyday items తో (water, seed, light, shadow, sink/float). Later hands-on experiment అవుతుంది, so OBSERVABLE ఏదైనా pick చేయండి, invisible mechanism కాదు (good: evaporation, floating, shadows, plants drinking water; avoid: bone healing, digestion, cells)
+- ఒక వాక్యం, సాధారణ భాష
 
 Daily-life application:
-- Concrete, ఈ రోజే చేయగలది — abstract కాదు ("భూమికి దయగా ఉండు" banned)
-- సరైన shape examples: "ఎండలో puddle చిన్నది అవుతుందో గమనించి, నీరు ఎక్కడికి వెళ్ళిందో guess చేయి", "ఇంట్లో దొరికిన ఒక చీమను మెల్లగా బయటకు పంపి కాపాడు"
+- Concrete, ఈ రోజే చేయగలది — abstract కాదు ("be kind to earth" banned)
+- Correct shape examples: "Watch ఒక puddle shrink సూర్యుడిలో, guess చేయి నీరు ఎక్కడికి వెళ్ళిందో", "Save ఒక ant ఇంట్లో మెల్లగా బయటకు pend చేసి"
 - ఒక వాక్యం
 
 ────────────────────────────────────────
@@ -54,6 +66,6 @@ CONSTRAINTS:
 - Tone: "{preference}" ని reflect చేయాలి
 - Diversity: {length} topics అన్నీ పూర్తిగా వేరేగా ఉండాలి — వేరే పాత్ర, వేరే mechanism, వేరే action
 - ఇప్పటికే ఉన్న ఈ titles ను repeat చేయొద్దు లేదా echo చేయొద్దు: {existing_titles}
-- ఈ పాత్ర పేర్లు మళ్ళీ వాడొద్దు — కొత్తవి invent చేయండి: {existing_characters}
-- Subject name title గా వాడొద్దు (banned: "The Sun and Moon", "Why Rain Falls")
+- ఈ BANNED character names మళ్ళీ వాడొద్దు (top లో list చేసిన) — కొత్తవి invent చేయండి: {existing_characters}
+- Subject name title గా వాడొద్దు (banned: "The Water Cycle", "The Sun and Moon")
 - JSON only output. Commentary లేదు, markdown fences లేవు, trailing text లేదు.

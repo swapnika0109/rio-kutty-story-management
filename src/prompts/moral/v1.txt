@@ -1,57 +1,52 @@
-You design TWO role-play/choice activities for a {age}-year-old that
-let them FEEL the story's moral — not just hear it.
+Design TWO DIY projects for a {age}-year-old that make them understand THIS story's moral.
 
-STORY TITLE: {story_title}
+STORY: {story_title}
 STORY MORAL: {story}
 DAILY-LIFE LINK: {daily_life_application}
 
-GUIDING RULES:
-1. Both activities must tie to THIS story — name the character or
-   central object in step 1. Generic kindness/sharing activities are
-   rejected. The two activities approach the moral from DIFFERENT
-   angles (e.g. one role-play, one craft-with-choice).
-2. Each activity gives the child a CHOICE or pretend role, not just
-   instructions to follow. The child becomes the character or helps
-   them.
-3. Difficulty scales with age. 3-4 yrs: simple pick-a-card or sort.
-   5-6 yrs: small skit with two outcomes. 7-9 yrs: a scenario with
-   trade-offs the child reasons through.
-4. Instructions are crisp numbered steps — one action per step. NOT
-   storytelling prose. The steps tell the parent/child what to DO,
-   not what happens in the story.
-5. Assume kid-safe variants of common tools. Avoid open flame,
-   blades, electricity, hot liquids, choking-size items for under-4s.
+WHAT MAKES A GOOD ONE:
+- It is a DIY project — the child BUILDS or MAKES a real object with their hands (not just drawing/painting; that is the art activity's job; keep these separate and never overlap).
+- NO pretend / acting / role-play. Do NOT write steps like "pretend you are X" or "act like Y". The child learns by MAKING and USING a real thing, not by performing. If a story character appears, the child MAKES it (a paper-roll figure, a cardboard cutout) — they do not become it.
+- Making it (and using it) helps the child understand and FEEL the story's MORAL — the life lesson, not how nature works.
+- It grows out of THIS story — name the character or object in step 1. Generic "be kind / share" projects are rejected.
+- Each project ends with the child USING the thing they made for a choice, share, or display moment so the lesson lands.
+- Eco-friendly, home-found materials only: cardboard, paper rolls, old cloth, bottle caps, string, leaves, twigs, cotton. Kid-safe tools (safety scissors, glue stick). No flame, blades, hot liquids, or choking-size parts for under-4s.
+- Difficulty fits the age (see examples).
 
-STYLE:
-- Title: 3-6 words, names the character or object from the story.
-- "What it Teaches": 1-2 short sentences naming the moral lesson.
-- Steps: 4-6 numbered actions. Each step is ONE action. Last step
-  is the child's choice / share / display moment.
+INSTRUCTIONS MUST BE CLEAR AND CONCRETE:
+- Each step is ONE simple action a child can follow without guessing.
+- Never name an object the child hasn't been told how to make. Spell it out: not "glue your Sunny face onto a paper cloud", but "Draw a round sun on yellow paper and cut it out" then "Cut a fluffy cloud shape from white paper".
+- Describe shapes, colours, and sizes plainly (a round yellow sun, a long cardboard strip, a small paper ball).
+- A parent should be able to read each step aloud and the child knows exactly what to do.
 
-OUTPUT — return ONLY this valid JSON array (TWO items), no prose:
+FEW-SHOT EXAMPLES BY AGE (match the idea and the concrete, no-pretend style — invent your own from the story's moral):
+- 3-4 (moral "small help matters"): "Wrap cotton inside an empty toilet-paper roll to make a soft nest." → "Tear a small bird shape from brown paper and place it in the nest." → "Carry the nest gently and find it a safe spot on a shelf."
+- 4-5 (moral "sharing"): "Cut the top off a small cardboard box to make a basket." → "Cut two apple shapes from red paper." → "Put both apples in the basket, then give one apple to a friend or a toy."
+- 5-6 (moral "passing on kindness"): "Cut a round circle from foil and glue it on card to make a shiny disc." → "Shine a torch on the foil so a bright spot lands on a friend's drawing." → "Say one kind thing as you 'pass the light' to them."
+- 6-7 (moral "patience"): "Fill a clean paper cup with soil." → "Push one seed in and water it." → "Draw a row of boxes on paper and tick one box each day you water it, until it sprouts."
+- 7-8 (moral "teamwork"): "Cut 4 cardboard strips and slot them together so they only stand up when all are joined." → "Try standing one strip alone — it falls." → "Build it together and see it stands, showing every piece is needed."
+- 8-9+ (moral "honesty / consequences"): "Tape cardboard walls into a maze with two end doors, labelled 'tell the truth' and 'hide it'." → "Roll a marble down each path." → "Talk about where each choice leads."
+
+OUTPUT — return ONLY this JSON array (EXACTLY TWO items), no other text:
 
 [
   {
-    "title": "<3-6 word activity name with story character/object>",
-    "age_appropriateness": "<1 short sentence>",
-    "What it Teaches": "<1-2 short sentences naming the moral>",
-    "materials": ["<item 1>", "<item 2>", "<3-5 common items>"],
-    "Instructions": ["<step 1>", "<step 2>", "<step 3>", "<step 4>", "<step 5>"],
-    "image_generation_prompt": "<English only — top-down photo of the finished activity, child's hands and materials>"
+    "title": "<3-6 words, names the story's character/object>",
+    "age_appropriateness": "<1 sentence — why a {age}-year-old can do this>",
+    "What it Teaches": "<1-2 sentences naming the moral lesson>",
+    "materials": ["<eco-friendly home item>", "<3-5 items total>"],
+    "Instructions": ["<step 1: one action>", "<4-6 clear steps, last is the child's choice/share/display>"],
+    "image_generation_prompt": "<English only — top-down photo of the finished project with child's hands and materials>"
   },
   {
     "title": "<different-angle 3-6 word name>",
-    "age_appropriateness": "<1 short sentence>",
-    "What it Teaches": "<1-2 short sentences>",
-    "materials": ["<item 1>", "<item 2>", "<3-5 items>"],
-    "Instructions": ["<step 1>", "<step 2>", "<step 3>", "<step 4>", "<step 5>"],
+    "age_appropriateness": "<1 sentence>",
+    "What it Teaches": "<1-2 sentences>",
+    "materials": ["<3-5 eco-friendly items>"],
+    "Instructions": ["<4-6 clear steps, last is a choice/share/display>"],
     "image_generation_prompt": "<English only — top-down photo>"
   }
 ]
 
-LANGUAGE: title, age_appropriateness, What it Teaches, materials,
-Instructions → write in {language}. image_generation_prompt → English.
-Sentence length: 3-4 yrs max 10 words/sentence; 5-6 yrs max 14; older
-ages may be slightly longer.
-
-Return ONLY the JSON array with EXACTLY 2 items.
+LANGUAGE: write title, age_appropriateness, What it Teaches, materials, Instructions in {language}; image_generation_prompt in English.
+Sentence length: ages 3-4 ≤10 words; 5-6 ≤14; older may be a little longer.

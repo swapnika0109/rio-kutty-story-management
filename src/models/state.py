@@ -5,17 +5,39 @@ Design principle:
 - Each workflow has its own TypedDict to avoid field collisions.
 - Fields use Annotated reducers so LangGraph can safely merge parallel node updates.
 - merge_dicts  → last-write-wins dict merge (safe for non-overlapping keys from parallel nodes)
-- operator.add → list append (safe for parallel nodes adding to lists)
+- union_list   → append-but-dedup list merge (for "completed"-style done-step sets)
 - All Optional fields default to None so nodes return only the fields they touch.
 """
 
 from typing import TypedDict, List, Dict, Any, Optional, Annotated
-import operator
 
 
 def merge_dicts(a: Dict, b: Dict) -> Dict:
     """Merge two dicts, with b overriding a for shared keys."""
     return {**a, **b}
+
+
+def union_list(a: List, b: List) -> List:
+    """Append b onto a, dropping duplicates while preserving first-seen order.
+
+    Used for "completed"-style channels that record which steps are done. With a
+    plain operator.add accumulator, a retry loop (e.g. activities re-running on
+    Gemini 503s) re-appends the same entries every attempt, so the list grows
+    without bound and eventually pushes the LangGraph checkpoint past Firestore's
+    1 MB document limit. A done-step set never needs duplicates, so we dedup.
+    """
+    seen = set()
+    out: List = []
+    for item in list(a) + list(b):
+        # Unhashable items (dicts/lists) can't be set-deduped — keep as-is.
+        try:
+            if item in seen:
+                continue
+            seen.add(item)
+        except TypeError:
+            pass
+        out.append(item)
+    return out
 
 
 # ---------------------------------------------------------------------------
@@ -46,7 +68,7 @@ class StoryTopicsState(TypedDict):
     story_ids: Optional[Dict[str, str]]
 
     # LangGraph reducers — must use Annotated so parallel node updates are safe.
-    completed: Annotated[List[str], operator.add]
+    completed: Annotated[List[str], union_list]
     errors: Annotated[Dict[str, str], merge_dicts]
 
 
@@ -68,7 +90,7 @@ class StoryCreatorState(TypedDict):
     evaluation: Optional[dict]
 
     correction_attempts: int
-    completed: Annotated[List[str], operator.add]
+    completed: Annotated[List[str], union_list]
     errors: Annotated[Dict[str, str], merge_dicts]
 
 
@@ -97,7 +119,7 @@ class ImageWorkflowState(TypedDict):
     # "completed" | "needs_human"
     status: str
 
-    completed: Annotated[List[str], operator.add]
+    completed: Annotated[List[str], union_list]
     errors: Annotated[Dict[str, str], merge_dicts]
 
 
@@ -131,7 +153,7 @@ class AudioWorkflowState(TypedDict):
     # "completed" | "needs_human"
     status: str
 
-    completed: Annotated[List[str], operator.add]
+    completed: Annotated[List[str], union_list]
     errors: Annotated[Dict[str, str], merge_dicts]
 
 
@@ -143,7 +165,7 @@ class ActivityState(TypedDict):
     # Parallel activity outputs merged by merge_dicts reducer.
     activities: Annotated[Dict[str, Any], merge_dicts]
     images: Annotated[Dict[str, str], merge_dicts]
-    completed: Annotated[List[str], operator.add]
+    completed: Annotated[List[str], union_list]
     errors: Annotated[Dict[str, str], merge_dicts]
     retry_count: Annotated[Dict[str, int], merge_dicts]
 

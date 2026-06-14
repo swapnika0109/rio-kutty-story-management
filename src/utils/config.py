@@ -65,13 +65,15 @@ class Settings(BaseSettings):
     RATE_LIMIT_BURST_CAPACITY: int = 6
 
     # Parallel workflow retries before escalating to human-in-the-loop.
-    # Was 4; lowered to 2 because the score-filtered retry feedback now makes
-    # retries genuinely corrective (vs. blind re-rolls). Two attempts is enough
-    # for most activities; persistent failures escalate to needs_human cleanly.
-    PARALLEL_WORKFLOW_MAX_RETRIES: int = 2
+    # Set to 4 to match the architectural plan: activities get 4 attempts to pass
+    # evaluation before escalating to human-in-the-loop. With metric-specific retry
+    # feedback, agents can target actual failures (e.g., "engagability too low" with
+    # reason text), making retries genuinely corrective rather than blind re-rolls.
+    PARALLEL_WORKFLOW_MAX_RETRIES: int = 4
 
     # Pub/Sub topic to notify admin when a parallel workflow needs human review
-    HUMAN_LOOP_NOTIFICATION_TOPIC: str = "story-agent"
+    # Format: projects/{project_id}/topics/{topic_name}
+    HUMAN_LOOP_NOTIFICATION_TOPIC: str = "projects/riokutty/topics/story-agent"
 
     # WF4 — Audio (Google Cloud Text-to-Speech)
     TTS_LANGUAGE_CODE: str = "en-US"

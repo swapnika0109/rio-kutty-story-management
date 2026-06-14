@@ -1,0 +1,40 @@
+{
+  "run_id": "20260511_104503",
+  "timestamp": "2026-05-11T10:46:13.729048+00:00",
+  "duration_seconds": 70.083,
+  "results": [
+    {
+      "test_id": "tests/e2e/test_wf2_story.py::TestWF2StoryPersisted::test_wf2_story_persisted[planet_protectors]",
+      "workflow": "WF2",
+      "theme": "planet_protectors",
+      "status": "FAIL",
+      "duration_seconds": 22.572,
+      "failure_node": null,
+      "error": "tests/e2e/test_wf2_story.py:83: in test_wf2_story_persisted\n    assert len(data[\"description\"]) > 0, \"description must be non-empty\"\nE   AssertionError: description must be non-empty\nE   assert 0 > 0\nE    +  where 0 = len('')"
+    },
+    {
+      "test_id": "tests/e2e/test_wf2_story.py::TestWF2StoryPersisted::test_wf2_story_persisted[mindful]",
+      "workflow": "WF2",
+      "theme": "mindful",
+      "status": "FAIL",
+      "duration_seconds": 24.402,
+      "failure_node": null,
+      "error": "tests/e2e/test_wf2_story.py:75: in test_wf2_story_persisted\n    doc = await firestore_test_client.collection(col).document(story_id).get()\n          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n.venv/lib/python3.11/site-packages/google/cloud/firestore_v1/async_document.py:375: in get\n    response_iter = await self._client._firestore_api.batch_get_documents(\n.venv/lib/python3.11/site-packages/google/api_core/retry/retry_unary_async.py:231: in retry_wrapped_func\n    return await retry_target(\n.venv/lib/python3.11/site-packages/google/api_core/retry/retry_unary_async.py:163: in retry_target\n    next_sleep = _retry_error_helper(\n.venv/lib/python3.11/site-packages/google/api_core/retry/retry_base.py:216: in _retry_error_helper\n    raise final_exc from source_exc\n.venv/lib/python3.11/site-packages/google/api_core/retry/retry_unary_async.py:158: in retry_target\n    return await target()\n           ^^^^^^^^^^^^^^\n.venv/lib/python3.11/site-packages/google/api_core/grpc_helpers_async.py:177: in error_remapped_callable\n    call = callable_(*args, **kwargs)\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^\n.venv/lib/python3.11/site-packages/grpc/aio/_channel.py:198: in __call__\n    call = UnaryStreamCall(\n.venv/lib/python3.11/site-packages/grpc/aio/_call.py:632: in __init__\n    self._send_unary_request_task = loop.create_task(\n/usr/local/Cellar/python@3.11/3.11.13/Frameworks/Python.framework/Versions/3.11/lib/python3.11/asyncio/base_events.py:435: in create_task\n    self._check_closed()\n/usr/local/Cellar/python@3.11/3.11.13/Frameworks/Python.framework/Versions/3.11/lib/python3.11/asyncio/base_events.py:520: in _check_closed\n    raise RuntimeError('Event loop is closed')\nE   RuntimeError: Event loop is closed"
+    },
+    {
+      "test_id": "tests/e2e/test_wf2_story.py::TestWF2StoryPersisted::test_wf2_story_persisted[chill]",
+      "workflow": "WF2",
+      "theme": "chill",
+      "status": "FAIL",
+      "duration_seconds": 14.696,
+      "failure_node": null,
+      "error": "tests/e2e/test_wf2_story.py:75: in test_wf2_story_persisted\n    doc = await firestore_test_client.collection(col).document(story_id).get()\n          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n.venv/lib/python3.11/site-packages/google/cloud/firestore_v1/async_document.py:375: in get\n    response_iter = await self._client._firestore_api.batch_get_documents(\n.venv/lib/python3.11/site-packages/google/api_core/retry/retry_unary_async.py:231: in retry_wrapped_func\n    return await retry_target(\n.venv/lib/python3.11/site-packages/google/api_core/retry/retry_unary_async.py:163: in retry_target\n    next_sleep = _retry_error_helper(\n.venv/lib/python3.11/site-packages/google/api_core/retry/retry_base.py:216: in _retry_error_helper\n    raise final_exc from source_exc\n.venv/lib/python3.11/site-packages/google/api_core/retry/retry_unary_async.py:158: in retry_target\n    return await target()\n           ^^^^^^^^^^^^^^\n.venv/lib/python3.11/site-packages/google/api_core/grpc_helpers_async.py:177: in error_remapped_callable\n    call = callable_(*args, **kwargs)\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^\n.venv/lib/python3.11/site-packages/grpc/aio/_channel.py:198: in __call__\n    call = UnaryStreamCall(\n.venv/lib/python3.11/site-packages/grpc/aio/_call.py:632: in __init__\n    self._send_unary_request_task = loop.create_task(\n/usr/local/Cellar/python@3.11/3.11.13/Frameworks/Python.framework/Versions/3.11/lib/python3.11/asyncio/base_events.py:435: in create_task\n    self._check_closed()\n/usr/local/Cellar/python@3.11/3.11.13/Frameworks/Python.framework/Versions/3.11/lib/python3.11/asyncio/base_events.py:520: in _check_closed\n    raise RuntimeError('Event loop is closed')\nE   RuntimeError: Event loop is closed"
+    }
+  ],
+  "summary": {
+    "total": 3,
+    "passed": 0,
+    "failed": 3,
+    "skipped": 0
+  }
+}

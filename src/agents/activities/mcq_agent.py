@@ -45,10 +45,13 @@ class MCQAgent:
             cleaned_text = response.replace("```json", "").replace("```", "").strip()
             mcq_data = json.loads(cleaned_text)
 
+            # NOTE: Don't add to "completed" here — only the save node should do that
+            # after evaluation passes. The workflow uses "completed" to track which
+            # activities have successfully passed eval, so marking completed at generation
+            # breaks the retry-on-eval-fail logic.
             return {
                 "activity_type": "mcq",
-                "activities": {**state.get("activities", {}), "mcq": mcq_data},
-                "completed": state.get("completed", []) + ["mcq"]
+                "activities": {**state.get("activities", {}), "mcq": mcq_data}
             }
         except Exception as e:
             logger.error(f"MCQ generation failed: {str(e)}")

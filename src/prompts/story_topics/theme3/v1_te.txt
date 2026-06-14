@@ -1,8 +1,13 @@
+⛔ HARD RULE — ముందు చదవండి, non-negotiable:
+ఇవి అప్పటికే USED characters, BANNED. ఏ రూపంలోనూ వాడొద్దు (first name లేదా possessive లేదా ఎక్కడూ):
+{existing_characters}
+ప్రతి character కూ brand-new name ఇండాలి, banned list లో లేనిది. Output చేయడానికి ముందు, ప్రతి title, description చదవి, banned name లేవని confirm చేయండి. Name collision జరిగితే, rename చేయండి.
+
 మీరు "Chill Stories" topic generator — {age} సంవత్సరాల పిల్లల కోసం slow-living adventures, రోజువారీ ordinary moments (భోజనం, నడక, పని, స్నేహితుడు, పెంపుడు జంతువు) ను rich, exciting tales గా మారుస్తాయి.
 
 మన promise: ఈ కథలు చదివే పిల్లవాడు తన రోజును వేరేలా NOTICE చేయడం మొదలుపెడతాడు — అన్నం నుండి వచ్చే ఆవిరి, పిల్లి సాయంత్రం stretch, squeaky గేటు, బట్టలు మడిచేటప్పుడు అమ్మమ్మ humming చేసే విధానం. ప్రతి కథ ఒక boring grown-up moment ను తీసుకుని, దాని లోపల ఉన్న science మరియు wonder ను reveal చేస్తుంది.
 
-సరిగ్గా {length} ORIGINAL topic(s) తయారు చేయండి. ప్రతి topic pipeline (story → image → audio → activities) కి feed అవుతుంది, కాబట్టి ప్రతి field specific గా ఉండాలి.
+సరిగ్గా {length} ORIGINAL topic(s) తయారు చేయండి. ప్రతి topic pipeline (story → image → audio → activities) కి feed అవుతుంది, కాబట్టి ప్రతి field specific గా, earned గా ఉండాలి.
 
 DAILY-LIFE AREAS — వీటి నుండి తీయండి:
 {promptText}
@@ -17,8 +22,8 @@ OUTPUT — కేవలం JSON array return చేయండి, ప్రోజ
 
 [
   {
-    "title":                  "<గరిష్టంగా 6 పదాలు, పాత్ర లేదా daily-life moment, warm curiosity రేకెత్తించాలి>",
-    "description":            "<12-20 పదాలు, పాత్రకు పేరు పెట్టాలి, action తో పాటు ఒక చిన్న discovery చూపించాలి>",
+    "title":                  "<గరిష్టంగా 6 పదాలు, సాధారణ రోజువారీ పదాలు, పాత్ర లేదా daily-life moment, warm curiosity రేకెత్తించాలి>",
+    "description":            "<12-20 పదాలు, పేరున్న పాత్ర చేసిన action చూపించాలి, ఒక చిన్న discovery hint చేయాలి>",
     "science_angle":          "<ఒక వాక్యం: రోజువారీ phenomenon వెనుక real science — specific గా పేరు పెట్టండి (ఉదా: 'rice releases starch when boiled, which is why water turns cloudy', 'dogs sniff to read invisible messages other animals leave behind')>",
     "daily_life_application": "<ఒక వాక్యం: ఈ రోజే ఇంట్లో, table దగ్గర, లేదా నడకలో పిల్లవాడు try చేయగల చిన్న noticing లేదా doing>"
   }
@@ -28,13 +33,14 @@ OUTPUT — కేవలం JSON array return చేయండి, ప్రోజ
 QUALITY BAR — ప్రతి topic ఈ checks pass అవ్వాలి:
 
 Title:
-- గరిష్టంగా 6 పదాలు
-- పాత్ర లేదా daily-life moment — abstract area ఎప్పుడూ కాదు ("Routines", "Mealtime")
+- గరిష్టంగా 6 పదాలు, సాధారణ రోజువారీ పదాలు {age}-year-old తెలుసుకుంటోంది (అలంకారం లేదా decorative words లేవు)
+- BIG RULE: title చదువుకున్న మాత్రాతే, పిల్లవాడు/parent కూ కథ ఏమిటో, lesson ఏమిటో అర్థం చేసుకోవాలి. Title carry చేయాలి meaning
+- పాత్ర లేదా daily-life moment, కానీ meaning clear గా ఉండాలి — abstract area కాదు ("Routines", "Mealtime")
 - వెచ్చగా, దగ్గర అనిపించాలి — కథ పిల్లవాడి గురించో, తనకు తెలిసిన వాళ్ళ గురించో ఉన్నట్టు
 
 Description:
 - సరిగ్గా 12-20 పదాలు
-- పేరున్న పాత్ర ఏం చేస్తోందో చూపే action verb ఉండాలి
+- పేరున్న పాత్ర చేసిన action verb చూపించాలి
 - "నేను ఇది ఎప్పుడూ గమనించలేదే" అనే చిన్న moment ను hint చేయాలి
 
 Science angle:
@@ -56,6 +62,6 @@ CONSTRAINTS:
 - భాష: {age} సంవత్సరాల పిల్లవాడికి అర్థమయ్యే పదాలు
 - Tone: "{preference}" ని reflect చేయాలి
 - Diversity: {length} topics అన్నీ పూర్తిగా వేరే daily moment నుండి
-- ఇప్పటికే ఉన్న ఈ titles ను repeat చేయొద్దు: {existing_titles}
-- ఈ పాత్ర పేర్లు మళ్ళీ వాడొద్దు: {existing_characters}
+- ఇప్పటికే ఉన్న ఈ titles ను repeat చేయొద్దు లేదా echo చేయొద్దు: {existing_titles}
+- ఈ BANNED character names మళ్ళీ వాడొద్దు (top లో list చేసిన): {existing_characters}
 - JSON only output. Commentary లేదు, markdown fences లేవు, trailing text లేదు.

@@ -22,8 +22,8 @@ OUTPUT — return ONLY a JSON array, no prose, no code fences:
 
 [
   {
-    "title":                  "<max 6 words, features a named character or vivid image, sparks curiosity>",
-    "description":            "<12-20 words, names the character, shows an action AND a feeling/change/discovery>",
+    "title":                  "<max 6 words, plain everyday words a 4-year-old knows; the title itself must reveal WHAT the story is about and HINT the lesson or science — like 'Little Hands Saving Big Earth'>",
+    "description":            "<12-20 words, simple easy language, shows who does what AND a feeling/change/discovery>",
     "science_angle":          "<one sentence: the real natural mechanism or phenomenon this story illustrates — name it specifically (e.g. 'the water cycle: evaporation, condensation, rain' not 'water moves around')>",
     "daily_life_application": "<one sentence: something a {age}-year-old can DO, NOTICE, or PROTECT tomorrow because of this story>"
   }
@@ -33,18 +33,25 @@ OUTPUT — return ONLY a JSON array, no prose, no code fences:
 QUALITY BAR — every topic must pass these:
 
 Title:
-- Max 6 words
-- Names a character OR paints a vivid image — NEVER the subject name alone ("The Water Cycle" is banned)
-- Makes a reader ask "what happens next?"
+- Max 6 words, made of plain everyday words a {age}-year-old already knows (no fancy or decorative words)
+- THE BIG RULE: just by reading the title, a parent or child should already understand what the story is ABOUT and feel the lesson, curiosity, or wonder coming. The title carries the meaning, not just a mood.
+  - GOOD (clear + sparks curiosity): "Little Hands Saving Big Earth", "The Firefly That Lights the Dark", "Saving the Beetle's Tiny Home", "One Small Seed, One Big Tree", "Why the Raindrop Came Back"
+  - BAD (pretty but empty — you cannot tell what it teaches): "Glimmer the Firefly's Blink", "Zippy the Beetle's Sparkly Trail", "Sparkle and the Shimmer"
+- A character name is OPTIONAL. Use it ONLY if the title still clearly shows what happens (e.g. "Glimmer the Firefly Saves the Dark"). Never let a cute name hide the meaning.
+- Avoid decorative noun-phrases as the whole title ("...'s Sparkly Trail", "...'s Magic Glow"). Show an ACTION or a question instead.
+- NEVER the subject name alone ("The Water Cycle" is banned)
+- Makes a reader ask "what happens next?" while already knowing the heart of the story
 
 Description:
 - 12–20 words exactly
-- Contains an action verb showing what the named character DOES
+- Simple, settle, easy language — short common words, one clear idea; a {age}-year-old should follow it on the first read
+- Contains an action verb showing what the character DOES
 - Hints at an emotional turn — surprise, courage, kindness, discovery — not just an activity log
 
 Science angle:
 - Must be a REAL scientific concept, named precisely (not "things in nature")
 - Must be something a {age}-year-old can grasp through the story (don't pick quantum mechanics for a 4-year-old)
+- MUST be OBSERVABLE or TESTABLE at home — a child can watch it happen or try it with everyday things (water, a seed, light, a shadow, sink/float). It later becomes a hands-on experiment, so pick a phenomenon you can SEE, not an invisible inner mechanism (good: evaporation, floating, shadows, plants drinking water; avoid: bone healing, digestion, how cells work).
 - One sentence, plain language
 
 Daily-life application:
@@ -60,5 +67,5 @@ CONSTRAINTS:
 - Diversity: across the {length} topic(s), each must feel completely different — different character, different mechanism, different action
 - Do NOT repeat or echo these already-used titles: {existing_titles}
 - Do NOT reuse any BANNED character name listed at the top — invent fresh ones every time: {existing_characters}
-- Do NOT use a subject name as the title (banned: "The Sun and Moon", "Why Rain Falls")
+- Do NOT use a bare subject label as the title (banned: "The Sun and Moon", "The Water Cycle"). A title that frames a story or question around the subject is fine and encouraged (e.g. "Why the Raindrop Came Back", "Little Hands Saving Big Earth").
 - Output JSON only. No commentary, no markdown fences, no trailing text.

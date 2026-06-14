@@ -1,0 +1,40 @@
+{
+  "run_id": "20260516_130248",
+  "timestamp": "2026-05-16T13:04:57.837121+00:00",
+  "duration_seconds": 128.945,
+  "results": [
+    {
+      "test_id": "tests/e2e/test_wf4_audio.py::TestWF4AudioGenerated::test_wf4_audio_generated[planet_protectors]",
+      "workflow": "WF4",
+      "theme": "planet_protectors",
+      "status": "FAIL",
+      "duration_seconds": 110.914,
+      "failure_node": null,
+      "error": "tests/e2e/test_wf4_audio.py:66: in test_wf4_audio_generated\n    assert doc.exists, f\"Story doc must exist after WF4: {col}/{story_id}\"\nE   AssertionError: Story doc must exist after WF4: planet_protectors_stories/92037cf8-63cb-4cd0-970e-da0e6e1e6dd6\nE   assert False\nE    +  where False = <google.cloud.firestore_v1.base_document.DocumentSnapshot object at 0x12091ccd0>.exists"
+    },
+    {
+      "test_id": "tests/e2e/test_wf4_audio.py::TestWF4AudioGenerated::test_wf4_audio_generated[mindful]",
+      "workflow": "WF4",
+      "theme": "mindful",
+      "status": "FAIL",
+      "duration_seconds": 6.56,
+      "failure_node": null,
+      "error": "tests/e2e/test_wf4_audio.py:66: in test_wf4_audio_generated\n    assert doc.exists, f\"Story doc must exist after WF4: {col}/{story_id}\"\nE   AssertionError: Story doc must exist after WF4: mindful_stories/8677f30a-8f80-4e9d-b6d7-84e07daedc54\nE   assert False\nE    +  where False = <google.cloud.firestore_v1.base_document.DocumentSnapshot object at 0x12094cd10>.exists"
+    },
+    {
+      "test_id": "tests/e2e/test_wf4_audio.py::TestWF4AudioGenerated::test_wf4_audio_generated[chill]",
+      "workflow": "WF4",
+      "theme": "chill",
+      "status": "FAIL",
+      "duration_seconds": 5.45,
+      "failure_node": null,
+      "error": "tests/e2e/test_wf4_audio.py:66: in test_wf4_audio_generated\n    assert doc.exists, f\"Story doc must exist after WF4: {col}/{story_id}\"\nE   AssertionError: Story doc must exist after WF4: chill_stories/4d8bfd43-9d24-4afb-b3be-307b005b85f1\nE   assert False\nE    +  where False = <google.cloud.firestore_v1.base_document.DocumentSnapshot object at 0x12091eed0>.exists"
+    }
+  ],
+  "summary": {
+    "total": 3,
+    "passed": 0,
+    "failed": 3,
+    "skipped": 0
+  }
+}
